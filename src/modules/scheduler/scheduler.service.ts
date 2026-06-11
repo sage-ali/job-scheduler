@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { JobModelAction } from '../jobs/jobs.model-action';
 import { JobsService } from '../jobs/jobs.service';
 import { JobStatus } from '../jobs/enums/job-status.enum';
+import { HeapPriorityQueue } from './heap';
 
 const STARVATION_THRESHOLD_MS = 5 * 60_000;
 const SCORE_BOOST_PER_MINUTE = 0.1;
@@ -38,7 +39,23 @@ export class SchedulerService {
 
       this.logger.log({ event: 'scheduler_enqueue_batch', count: jobs.length });
 
+      const heap = new HeapPriorityQueue();
+      const jobMap = new Map(jobs.map((j) => [j.id, j]));
+
       for (const job of jobs) {
+        heap.insert({
+          score: job.priority_score,
+          scheduledAt: job.scheduled_at,
+          createdAt: job.created_at,
+          jobId: job.id,
+        });
+      }
+
+      let enqueued = 0;
+      while (heap.size() > 0) {
+        const node = heap.popMin()!;
+        const job = jobMap.get(node.jobId)!;
+
         if (job.depends_on && job.depends_on.length > 0) {
           const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
           const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
@@ -53,9 +70,10 @@ export class SchedulerService {
         }
 
         await this.jobsService.enqueue(job);
+        enqueued++;
       }
 
-      return jobs.length;
+      return enqueued;
     } catch (err) {
       this.logger.error({
         event: 'scheduler_enqueue_sweep_failed',
