@@ -8,9 +8,7 @@ const boolEnv = z
   .transform((v) => v === true || v === 'true');
 
 const envSchema = z.object({
-  NODE_ENV: z
-    .enum(['development', 'test', 'production'])
-    .default('development'),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
   DATABASE_HOST: z.string().min(1),
@@ -48,10 +46,8 @@ const envSchema = z.object({
 const result = envSchema.safeParse(process.env);
 
 if (!result.success) {
-  console.error(
-    'Invalid environment variables:\n',
-    result.error.flatten().fieldErrors,
-  );
+  // eslint-disable-next-line no-console
+  console.error('Invalid environment variables:\n', result.error.flatten().fieldErrors);
   process.exit(1);
 }
 

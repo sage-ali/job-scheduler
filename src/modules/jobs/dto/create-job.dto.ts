@@ -6,11 +6,9 @@ import {
   IsOptional,
   IsArray,
   IsUUID,
-  IsString,
   Max,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import { JobPriority } from '../enums/job-priority.enum';
 import { JobType, RecurringInterval } from '../enums/job-type.enum';
 

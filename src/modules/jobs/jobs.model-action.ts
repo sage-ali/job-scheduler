@@ -14,7 +14,7 @@ export class JobModelAction extends AbstractModelAction<Job> {
     super(repository, Job);
   }
 
-  async findEligibleJobs(limit: number): Promise<Job[]> {
+  async findEligibleJobs(_limit: number): Promise<Job[]> {
     throw new Error('Not implemented');
   }
 

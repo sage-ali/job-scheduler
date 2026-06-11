@@ -44,8 +44,7 @@ export class JobsService {
       scheduled_at: job.scheduled_at,
     });
 
-    const isImmediate =
-      !job.scheduled_at && (!job.depends_on || job.depends_on.length === 0);
+    const isImmediate = !job.scheduled_at && (!job.depends_on || job.depends_on.length === 0);
 
     if (isImmediate) {
       await this.enqueue(job);
@@ -108,7 +107,7 @@ export class JobsService {
       { jobId: job.id },
       {
         priority: job.priority,
-        jobId: `job:${job.id}`,  // idempotent — Bull deduplicates by jobId
+        jobId: `job:${job.id}`, // idempotent — Bull deduplicates by jobId
       },
     );
 

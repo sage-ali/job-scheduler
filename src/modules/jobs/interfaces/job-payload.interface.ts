@@ -22,7 +22,4 @@ export interface LogProcessingPayload {
   metadata?: Record<string, unknown>;
 }
 
-export type JobPayload =
-  | SendEmailPayload
-  | WebhookDeliveryPayload
-  | LogProcessingPayload;
+export type JobPayload = SendEmailPayload | WebhookDeliveryPayload | LogProcessingPayload;

@@ -34,10 +34,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const logMessage = `${request.method} ${request.url} → ${payload.statusCode}`;
     if (payload.statusCode >= INTERNAL_SERVER_ERROR_THRESHOLD) {
-      this.logger.error(
-        logMessage,
-        exception instanceof Error ? exception.stack : undefined,
-      );
+      this.logger.error(logMessage, exception instanceof Error ? exception.stack : undefined);
     } else {
       this.logger.warn(logMessage);
     }
@@ -58,9 +55,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(payload.statusCode).json(body);
   }
 
-  private normalizeError(
-    exception: unknown,
-  ): Omit<ErrorBody, 'path' | 'timestamp'> {
+  private normalizeError(exception: unknown): Omit<ErrorBody, 'path' | 'timestamp'> {
     if (exception instanceof HttpException) {
       return this.normalizeHttpException(exception);
     }
@@ -73,9 +68,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     };
   }
 
-  private normalizeHttpException(
-    exception: HttpException,
-  ): Omit<ErrorBody, 'path' | 'timestamp'> {
+  private normalizeHttpException(exception: HttpException): Omit<ErrorBody, 'path' | 'timestamp'> {
     const statusCode = exception.getStatus();
 
     if (statusCode >= INTERNAL_SERVER_ERROR_THRESHOLD) {
@@ -104,8 +97,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         success: false,
         statusCode,
         error: (body.error as string) ?? exception.name,
-        message:
-          (body.message as string | string[]) ?? SYS_MSG.VALIDATION_FAILED,
+        message: (body.message as string | string[]) ?? SYS_MSG.VALIDATION_FAILED,
         details: body.details ?? body.errors,
       };
     }

@@ -38,12 +38,7 @@ import { EmailSimulationHandler } from './handlers/email-simulation.handler';
       inject: [ConfigService],
     }),
   ],
-  providers: [
-    JobWorkerProcessor,
-    EmailSimulationHandler,
-    JobModelAction,
-    DlqService,
-  ],
+  providers: [JobWorkerProcessor, EmailSimulationHandler, JobModelAction, DlqService],
   exports: [BullModule],
 })
 export class JobsQueueModule {}

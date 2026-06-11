@@ -45,21 +45,13 @@ function defaultMessageFor(statusCode: HttpStatus): string {
 }
 
 @Injectable()
-export class TransformInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T>>
-{
-  intercept(
-    _context: ExecutionContext,
-    next: CallHandler<T>,
-  ): Observable<ApiResponse<T>> {
-    const httpResponse = _context
-      .switchToHttp()
-      .getResponse<{ statusCode?: number }>();
+export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponse<T>> {
+  intercept(_context: ExecutionContext, next: CallHandler<T>): Observable<ApiResponse<T>> {
+    const httpResponse = _context.switchToHttp().getResponse<{ statusCode?: number }>();
 
     return next.handle().pipe(
       map((payload) => {
-        const defaultStatusCode =
-          httpResponse?.statusCode ?? HttpStatus.OK;
+        const defaultStatusCode = httpResponse?.statusCode ?? HttpStatus.OK;
 
         if (isStructuredPayload(payload)) {
           const { statusCode, message, data, ...rest } = payload;

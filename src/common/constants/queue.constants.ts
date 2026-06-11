@@ -7,8 +7,8 @@ export const JOBS = {
 } as const;
 
 export const JOB_RETENTION = {
-  COMPLETED_MS: 1000 * 60 * 60 * 24,      // 24 h
-  FAILED_MS: 1000 * 60 * 60 * 24 * 7,     // 7 days
+  COMPLETED_MS: 1000 * 60 * 60 * 24, // 24 h
+  FAILED_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
 } as const;
 
 // Redis key prefix and TTL for the distributed worker lock.

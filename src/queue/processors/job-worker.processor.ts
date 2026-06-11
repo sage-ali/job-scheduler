@@ -41,11 +41,7 @@ export class JobWorkerProcessor {
 
     const lockKey = `${WORKER_LOCK.KEY_PREFIX}${jobId}`;
     const lockToken = randomUUID();
-    const acquired = await this.redisService.setNx(
-      lockKey,
-      lockToken,
-      WORKER_LOCK.TTL_SECONDS,
-    );
+    const acquired = await this.redisService.setNx(lockKey, lockToken, WORKER_LOCK.TTL_SECONDS);
     if (!acquired) {
       this.logger.warn({
         event: 'job_lock_contention',
@@ -108,16 +104,12 @@ export class JobWorkerProcessor {
       });
 
       this.logger.log({ event: 'job_completed', jobId, type: job.type });
-
     } finally {
       await this.redisService.releaseLock(lockKey, lockToken);
     }
   }
 
-  private async dispatch(
-    type: JobType,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
+  private async dispatch(type: JobType, payload: Record<string, unknown>): Promise<void> {
     switch (type) {
       case JobType.SEND_EMAIL:
         await this.emailHandler.handle(payload as unknown as SendEmailPayload);
@@ -143,8 +135,7 @@ export class JobWorkerProcessor {
 
   @OnQueueCompleted()
   onCompleted(bullJob: BullJob<WorkerJobData>): void {
-    const duration =
-      (bullJob.finishedOn ?? Date.now()) - (bullJob.processedOn ?? Date.now());
+    const duration = (bullJob.finishedOn ?? Date.now()) - (bullJob.processedOn ?? Date.now());
     this.logger.log({
       event: 'job_bull_completed',
       jobId: bullJob.data.jobId,
@@ -154,10 +145,7 @@ export class JobWorkerProcessor {
   }
 
   @OnQueueFailed()
-  async onFailed(
-    bullJob: BullJob<WorkerJobData>,
-    error: Error,
-  ): Promise<void> {
+  async onFailed(bullJob: BullJob<WorkerJobData>, error: Error): Promise<void> {
     const maxAttempts = bullJob.opts.attempts ?? 3;
     const willRetry = bullJob.attemptsMade < maxAttempts;
 
@@ -169,9 +157,7 @@ export class JobWorkerProcessor {
       attemptsMade: bullJob.attemptsMade,
       maxAttempts,
       willRetry,
-      nextRetryMs: willRetry
-        ? this.backoffService.calculateWaitMs(bullJob.attemptsMade)
-        : null,
+      nextRetryMs: willRetry ? this.backoffService.calculateWaitMs(bullJob.attemptsMade) : null,
     });
 
     if (!willRetry) {

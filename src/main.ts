@@ -36,10 +36,12 @@ async function bootstrap() {
   }
 
   await app.listen(env.PORT);
+  // eslint-disable-next-line no-console
   console.log(`Application running on http://localhost:${env.PORT}`);
   if (env.SWAGGER_ENABLED) {
+    // eslint-disable-next-line no-console
     console.log(`Swagger docs at http://localhost:${env.PORT}/api/docs`);
   }
 }
 
-bootstrap();
+void bootstrap();

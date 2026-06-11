@@ -1,7 +1,4 @@
-export function maskId(
-  id: string | null | undefined,
-  prefix: string = 'id',
-): string {
+export function maskId(id: string | null | undefined, prefix: string = 'id'): string {
   if (!id) return `${prefix}_****`;
 
   const underscoreIndex = id.indexOf('_');

@@ -51,9 +51,7 @@ export class PinoLoggerService implements LoggerService {
             ? obj['message']
             : 'unknown';
       const rest = Object.fromEntries(
-        Object.entries(obj).filter(
-          ([k]) => k !== 'event' && k !== 'message',
-        ),
+        Object.entries(obj).filter(([k]) => k !== 'event' && k !== 'message'),
       ) as Record<string, unknown>;
       return { event, data: rest };
     }
@@ -145,11 +143,8 @@ export class PinoLoggerService implements LoggerService {
       return;
     }
     const err = errOrContext instanceof Error ? errOrContext : undefined;
-    const nestContext =
-      typeof errOrContext === 'string' ? errOrContext : undefined;
-    this.logger.error(
-      this.buildPayload(event, dataOrStack, err, nestContext),
-    );
+    const nestContext = typeof errOrContext === 'string' ? errOrContext : undefined;
+    this.logger.error(this.buildPayload(event, dataOrStack, err, nestContext));
   }
 
   debug(event: string, data?: Record<string, unknown>): void {
@@ -168,9 +163,7 @@ export class PinoLoggerService implements LoggerService {
       return;
     }
     const context = (optionalParams[0] as string | undefined) ?? 'NestJS';
-    this.logger.info(
-      this.buildPayload('nestjs.log', { message, context }),
-    );
+    this.logger.info(this.buildPayload('nestjs.log', { message, context }));
   }
 
   verbose(message: string, ...optionalParams: unknown[]): void {
@@ -180,9 +173,7 @@ export class PinoLoggerService implements LoggerService {
       return;
     }
     const context = (optionalParams[0] as string | undefined) ?? 'NestJS';
-    this.logger.debug(
-      this.buildPayload('nestjs.verbose', { message, context }),
-    );
+    this.logger.debug(this.buildPayload('nestjs.verbose', { message, context }));
   }
 
   fatal(message: string, ...optionalParams: unknown[]): void {
@@ -192,8 +183,6 @@ export class PinoLoggerService implements LoggerService {
       return;
     }
     const context = (optionalParams[0] as string | undefined) ?? 'NestJS';
-    this.logger.fatal(
-      this.buildPayload('nestjs.fatal', { message, context }),
-    );
+    this.logger.fatal(this.buildPayload('nestjs.fatal', { message, context }));
   }
 }

@@ -5,8 +5,8 @@ import { JobsService } from '../jobs/jobs.service';
 import { JobStatus } from '../jobs/enums/job-status.enum';
 import { RECURRING_INTERVAL_MS } from '../jobs/enums/job-type.enum';
 
-const STARVATION_THRESHOLD_MS = 5 * 60_000;
-const SCORE_BOOST_PER_MINUTE = 0.1;
+const _STARVATION_THRESHOLD_MS = 5 * 60_000;
+const _SCORE_BOOST_PER_MINUTE = 0.1;
 const SWEEP_BATCH_SIZE = 50;
 
 @Injectable()

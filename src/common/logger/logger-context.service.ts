@@ -13,10 +13,7 @@ export interface LogContext {
 export class LoggerContextService {
   private readonly als = new AsyncLocalStorage<LogContext>();
 
-  async run<T>(
-    context: LogContext,
-    callback: () => T | Promise<T>,
-  ): Promise<T> {
+  async run<T>(context: LogContext, callback: () => T | Promise<T>): Promise<T> {
     return this.als.run(context, async () => {
       return await callback();
     });
@@ -30,11 +27,7 @@ export class LoggerContextService {
     return this.getContext()?.requestId ?? null;
   }
 
-  setJobContext(
-    jobId: string | number,
-    queue: string,
-    attempt?: number,
-  ): void {
+  setJobContext(jobId: string | number, queue: string, attempt?: number): void {
     const context = this.getContext();
     if (context) {
       context.jobId = jobId;
