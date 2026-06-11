@@ -98,6 +98,14 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "@common/(.*)": "<rootDir>/common/$1",
+      "@config/(.*)": "<rootDir>/config/$1",
+      "@constants/(.*)": "<rootDir>/constants/$1",
+      "@modules/(.*)": "<rootDir>/modules/$1",
+      "@queue/(.*)": "<rootDir>/queue/$1",
+      "@worker/(.*)": "<rootDir>/worker/$1"
+    }
   }
 }
