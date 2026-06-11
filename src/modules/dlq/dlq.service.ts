@@ -1,13 +1,13 @@
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpStatus, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DlqJob } from './entities/dlq-job.entity';
 import { JobsService } from '../jobs/jobs.service';
 import { CustomHttpException } from '@common/exceptions/custom-http.exception';
+import { EmailSimulationHandler } from '@queue/handlers/email-simulation.handler';
 import * as SYS_MSG from '@constants/system-messages';
 import { env } from '@config/env';
 
-// Defined here so the value is testable. Overridable via DLQ_ALERT_THRESHOLD env var.
 const DLQ_THRESHOLD = env.DLQ_ALERT_THRESHOLD;
 
 @Injectable()
@@ -17,7 +17,8 @@ export class DlqService {
   constructor(
     @InjectRepository(DlqJob)
     private readonly dlqRepository: Repository<DlqJob>,
-    private readonly jobsService: JobsService,
+    @Optional() private readonly jobsService: JobsService,
+    @Optional() private readonly emailHandler: EmailSimulationHandler,
   ) {}
 
   async moveToDlq(params: {
@@ -58,14 +59,18 @@ export class DlqService {
   }
 
   async retryDlqJob(dlqJobId: string): Promise<{ jobId: string }> {
-    const dlqJob = await this.dlqRepository.findOne({
-      where: { id: dlqJobId },
-    });
+    const dlqJob = await this.dlqRepository.findOne({ where: { id: dlqJobId } });
     if (!dlqJob) {
       throw new CustomHttpException(SYS_MSG.DLQ_JOB_NOT_FOUND(dlqJobId), HttpStatus.NOT_FOUND);
     }
 
-    // If it fails again after 3 attempts it comes back to the DLQ.
+    if (!this.jobsService) {
+      throw new CustomHttpException(
+        SYS_MSG.HTTP_INTERNAL_SERVER_ERROR,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
     const newJob = await this.jobsService.createJob({
       type: dlqJob.type as never,
       payload: dlqJob.payload,
@@ -85,14 +90,19 @@ export class DlqService {
 
   private async checkThresholdAndAlert(): Promise<void> {
     const count = await this.dlqRepository.count();
+    if (count < DLQ_THRESHOLD) return;
 
-    if (count >= DLQ_THRESHOLD) {
-      this.logger.error({
-        event: 'dlq_threshold_exceeded',
-        count,
-        threshold: DLQ_THRESHOLD,
-        message: SYS_MSG.DLQ_THRESHOLD_EXCEEDED(count, DLQ_THRESHOLD),
-        alertEmail: env.ALERT_EMAIL,
+    this.logger.error({
+      event: 'dlq_threshold_exceeded',
+      count,
+      threshold: DLQ_THRESHOLD,
+    });
+
+    if (this.emailHandler) {
+      await this.emailHandler.handle({
+        to: env.ALERT_EMAIL,
+        subject: SYS_MSG.DLQ_THRESHOLD_EXCEEDED(count, DLQ_THRESHOLD),
+        body: `The dead-letter queue has ${count} failed jobs (threshold: ${DLQ_THRESHOLD}). Review and retry from the DLQ view.`,
       });
     }
   }
