@@ -7,13 +7,16 @@ import { Job } from '../modules/jobs/entities/job.entity';
 import { JobModelAction } from '../modules/jobs/jobs.model-action';
 import { DlqJob } from '../modules/dlq/entities/dlq-job.entity';
 import { DlqService } from '../modules/dlq/dlq.service';
+import { RedisModule } from '../modules/redis/redis.module';
 import { QueueModule } from './queue.module';
 import { JobWorkerProcessor } from './processors/job-worker.processor';
 import { EmailSimulationHandler } from './handlers/email-simulation.handler';
+import { BackoffService } from '../worker/backoff.service';
 
 @Module({
   imports: [
     QueueModule,
+    RedisModule,
     TypeOrmModule.forFeature([Job, DlqJob]),
     BullModule.registerQueueAsync({
       name: QUEUES.JOBS,
@@ -38,7 +41,13 @@ import { EmailSimulationHandler } from './handlers/email-simulation.handler';
       inject: [ConfigService],
     }),
   ],
-  providers: [JobWorkerProcessor, EmailSimulationHandler, JobModelAction, DlqService],
+  providers: [
+    JobWorkerProcessor,
+    EmailSimulationHandler,
+    BackoffService,
+    JobModelAction,
+    DlqService,
+  ],
   exports: [BullModule],
 })
 export class JobsQueueModule {}
