@@ -78,7 +78,12 @@ export class JobsService {
   async cancelJob(id: string): Promise<Job> {
     const job = await this.getJob(id);
 
-    if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
+    if (job.status === JobStatus.PROCESSING) {
+      throw new CustomHttpException(SYS_MSG.JOB_ALREADY_PROCESSING, HttpStatus.CONFLICT);
+    }
+
+    const terminalStatuses = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
+    if (terminalStatuses.includes(job.status)) {
       throw new CustomHttpException(
         SYS_MSG.JOB_CANNOT_BE_CANCELLED(job.status),
         HttpStatus.BAD_REQUEST,

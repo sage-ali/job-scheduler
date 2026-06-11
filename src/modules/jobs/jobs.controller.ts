@@ -11,45 +11,69 @@ import {
   Query,
   Sse,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { ListJobsQueryDto } from './dto/list-jobs.query.dto';
+import * as SYS_MSG from '@constants/system-messages';
+import {
+  CreateJobDocs,
+  ListJobsDocs,
+  GetStatsDocs,
+  GetJobDocs,
+  CancelJobDocs,
+  StreamEventsDocs,
+} from './docs/jobs-swagger.doc';
 
+@ApiTags('Jobs')
 @Controller('jobs')
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  createJob(@Body() dto: CreateJobDto) {
-    return this.jobsService.createJob(dto);
+  @CreateJobDocs()
+  async createJob(@Body() dto: CreateJobDto) {
+    const data = await this.jobsService.createJob(dto);
+    return { statusCode: HttpStatus.CREATED, message: SYS_MSG.JOB_CREATED, data };
   }
 
   @Get()
-  listJobs(@Query() query: ListJobsQueryDto) {
-    return this.jobsService.listJobs(query);
+  @ListJobsDocs()
+  async listJobs(@Query() query: ListJobsQueryDto) {
+    const { payload, paginationMeta } = await this.jobsService.listJobs(query);
+    return {
+      statusCode: HttpStatus.OK,
+      message: SYS_MSG.JOB_LIST_FETCHED,
+      data: payload,
+      ...(paginationMeta as Record<string, unknown>),
+    };
   }
 
   @Get('stats')
-  getDashboardStats() {
-    return this.jobsService.getDashboardStats();
+  @GetStatsDocs()
+  async getDashboardStats() {
+    const data = await this.jobsService.getDashboardStats();
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.JOB_STATS_FETCHED, data };
   }
 
   @Get(':id')
-  getJob(@Param('id', ParseUUIDPipe) id: string) {
-    return this.jobsService.getJob(id);
+  @GetJobDocs()
+  async getJob(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.jobsService.getJob(id);
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.JOB_FETCHED, data };
   }
 
   @Patch(':id/cancel')
-  cancelJob(@Param('id', ParseUUIDPipe) id: string) {
-    return this.jobsService.cancelJob(id);
+  @CancelJobDocs()
+  async cancelJob(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.jobsService.cancelJob(id);
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.JOB_CANCELLED_SUCCESS, data };
   }
 
-  // TODO: implement one of SSE / WebSocket / polling for live updates.
-  // SSE stub — replace Observable<never> with a real event stream from
-  // an EventEmitter2 or Subject that JobsService publishes to.
   @Sse('events')
+  @StreamEventsDocs()
   streamEvents(): Observable<never> {
     throw new Error('SSE not yet implemented');
   }

@@ -4,7 +4,6 @@ import { JobModelAction } from '../jobs.model-action';
 import { JobStatus } from '../enums/job-status.enum';
 import { JobType } from '../enums/job-type.enum';
 import { JobPriority } from '../enums/job-priority.enum';
-import { CustomHttpException } from '@common/exceptions/custom-http.exception';
 import type { Job } from '../entities/job.entity';
 import type { Queue } from 'bull';
 

@@ -28,8 +28,6 @@ async function bootstrap() {
       .setTitle('Job Scheduler API')
       .setDescription('Distributed job scheduling service with Bull + Redis')
       .setVersion('1.0')
-      .addTag('jobs')
-      .addTag('dlq')
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);

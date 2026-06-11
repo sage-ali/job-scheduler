@@ -19,6 +19,10 @@ export const REDIS_PATTERN_DELETE_SUCCESS = (count: number, pattern: string) =>
 // Jobs
 export const JOB_NOT_FOUND = (id: string) => `Job ${id} not found`;
 export const JOB_CREATED = 'Job created successfully';
+export const JOB_LIST_FETCHED = 'Jobs retrieved successfully';
+export const JOB_FETCHED = 'Job retrieved successfully';
+export const JOB_STATS_FETCHED = 'Dashboard statistics retrieved successfully';
+export const JOB_CANCELLED_SUCCESS = 'Job cancelled successfully';
 export const JOB_ALREADY_PROCESSING = 'Job is already being processed and cannot be modified';
 export const JOB_CANNOT_BE_CANCELLED = (status: string) =>
   `Job with status "${status}" cannot be cancelled`;
@@ -27,6 +31,7 @@ export const JOB_DEPENDENCY_NOT_MET = (depId: string) =>
 
 // DLQ
 export const DLQ_JOB_NOT_FOUND = (id: string) => `DLQ job ${id} not found`;
+export const DLQ_LIST_FETCHED = 'DLQ jobs retrieved successfully';
 export const DLQ_RETRY_QUEUED = 'Job re-queued from DLQ for retry';
 export const DLQ_THRESHOLD_EXCEEDED = (count: number, threshold: number) =>
   `DLQ alert: ${count} jobs have failed (threshold: ${threshold})`;
