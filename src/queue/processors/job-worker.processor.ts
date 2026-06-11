@@ -13,7 +13,8 @@ import { JobModelAction } from '@modules/jobs/jobs.model-action';
 import { DlqService } from '@modules/dlq/dlq.service';
 import { RedisService } from '@modules/redis/redis.service';
 import { JobStatus } from '@modules/jobs/enums/job-status.enum';
-import { JobType } from '@modules/jobs/enums/job-type.enum';
+import { JobType, RECURRING_INTERVAL_MS } from '@modules/jobs/enums/job-type.enum';
+import { Job } from '@modules/jobs/entities/job.entity';
 import { EmailSimulationHandler } from '../handlers/email-simulation.handler';
 import type { SendEmailPayload } from '@modules/jobs/interfaces/job-payload.interface';
 import { BackoffService } from '@worker/backoff.service';
@@ -103,10 +104,41 @@ export class JobWorkerProcessor {
         transactionOptions: { useTransaction: false },
       });
 
+      if (job.recurring_interval) {
+        await this.scheduleNextRecurrence(job);
+      }
+
       this.logger.log({ event: 'job_completed', jobId, type: job.type });
     } finally {
       await this.redisService.releaseLock(lockKey, lockToken);
     }
+  }
+
+  private async scheduleNextRecurrence(job: Job): Promise<void> {
+    const intervalMs = RECURRING_INTERVAL_MS[job.recurring_interval!];
+    const nextAt = new Date(Date.now() + intervalMs);
+
+    await this.jobModelAction.create({
+      createPayload: {
+        type: job.type,
+        payload: job.payload,
+        priority: job.priority,
+        status: JobStatus.PENDING,
+        scheduled_at: nextAt,
+        recurring_interval: job.recurring_interval,
+        depends_on: null,
+        retry_count: 0,
+        priority_score: job.priority,
+      },
+      transactionOptions: { useTransaction: false },
+    });
+
+    this.logger.log({
+      event: 'recurring_job_rescheduled',
+      originalJobId: job.id,
+      interval: job.recurring_interval,
+      nextAt,
+    });
   }
 
   private async dispatch(type: JobType, payload: Record<string, unknown>): Promise<void> {

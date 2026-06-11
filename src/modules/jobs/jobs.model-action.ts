@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, LessThan, LessThanOrEqual, Repository } from 'typeorm';
 import { AbstractModelAction } from '@hng-sdk/orm';
 import { Job } from './entities/job.entity';
 import { JobStatus } from './enums/job-status.enum';
@@ -29,6 +29,15 @@ export class JobModelAction extends AbstractModelAction<Job> {
   async findJobsByIds(ids: string[]): Promise<Job[]> {
     if (ids.length === 0) return [];
     return this.repository.find({ where: { id: In(ids) } });
+  }
+
+  async findStarvingPendingJobs(thresholdMs: number, limit: number): Promise<Job[]> {
+    const cutoff = new Date(Date.now() - thresholdMs);
+    return this.repository.find({
+      where: { status: JobStatus.PENDING, created_at: LessThan(cutoff) },
+      order: { priority_score: 'ASC' },
+      take: limit,
+    });
   }
 
   async countByStatus(): Promise<Record<JobStatus, number>> {

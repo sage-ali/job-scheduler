@@ -3,10 +3,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { JobModelAction } from '../jobs/jobs.model-action';
 import { JobsService } from '../jobs/jobs.service';
 import { JobStatus } from '../jobs/enums/job-status.enum';
-import { RECURRING_INTERVAL_MS } from '../jobs/enums/job-type.enum';
 
-const _STARVATION_THRESHOLD_MS = 5 * 60_000;
-const _SCORE_BOOST_PER_MINUTE = 0.1;
+const STARVATION_THRESHOLD_MS = 5 * 60_000;
+const SCORE_BOOST_PER_MINUTE = 0.1;
 const SWEEP_BATCH_SIZE = 50;
 
 @Injectable()
@@ -67,29 +66,35 @@ export class SchedulerService {
   }
 
   private async boostStarvingJobs(): Promise<number> {
-    return 0;
-  }
+    try {
+      const starvingJobs = await this.jobModelAction.findStarvingPendingJobs(
+        STARVATION_THRESHOLD_MS,
+        SWEEP_BATCH_SIZE,
+      );
 
-  async scheduleNextRun(jobId: string): Promise<void> {
-    const job = await this.jobModelAction.get({ identifierOptions: { id: jobId } });
-    if (!job?.recurring_interval) return;
+      if (starvingJobs.length === 0) return 0;
 
-    const intervalMs = RECURRING_INTERVAL_MS[job.recurring_interval];
-    const nextAt = new Date(Date.now() + intervalMs);
+      await Promise.all(
+        starvingJobs.map(async (job) => {
+          const minutesWaiting = (Date.now() - job.created_at.getTime()) / 60_000;
+          const newScore = Math.max(
+            0,
+            job.priority_score - SCORE_BOOST_PER_MINUTE * minutesWaiting,
+          );
 
-    await this.jobsService.createJob({
-      type: job.type as never,
-      payload: job.payload,
-      priority: job.priority as never,
-      recurring_interval: job.recurring_interval,
-      scheduled_at: nextAt.toISOString(),
-    });
+          await this.jobModelAction.update({
+            identifierOptions: { id: job.id },
+            updatePayload: { priority_score: newScore },
+            transactionOptions: { useTransaction: false },
+          });
+        }),
+      );
 
-    this.logger.log({
-      event: 'recurring_job_rescheduled',
-      originalJobId: jobId,
-      interval: job.recurring_interval,
-      nextAt,
-    });
+      this.logger.log({ event: 'starvation_boost_applied', count: starvingJobs.length });
+      return starvingJobs.length;
+    } catch (err) {
+      this.logger.error({ event: 'starvation_boost_failed', error: (err as Error).message });
+      return 0;
+    }
   }
 }
