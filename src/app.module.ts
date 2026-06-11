@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisConfig } from './config/redis.config';
 import { env } from './config/env';
 import { LoggerModule } from './common/logger/logger.module';
@@ -15,6 +16,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
       isGlobal: true,
       load: [redisConfig],
     }),
+    EventEmitterModule.forRoot({ maxListeners: 50 }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: env.DATABASE_HOST,
