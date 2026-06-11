@@ -85,7 +85,20 @@ export class JobsService {
       );
     }
 
-    // Best-effort: if PROCESSING, the worker discards its result on seeing CANCELLED in DB.
+    if (job.status === JobStatus.PENDING) {
+      // Remove from Bull before the DB update to prevent a race where the worker
+      // picks up the job between the status change and the Bull removal.
+      const bullJob = await this.jobsQueue.getJob(`job:${id}`);
+      if (bullJob) {
+        try {
+          await bullJob.remove();
+        } catch {
+          // Job may have been picked up between getJob and remove — the worker
+          // will check DB status and discard it.
+        }
+      }
+    }
+
     await this.jobModelAction.update({
       identifierOptions: { id },
       updatePayload: { status: JobStatus.CANCELLED },
@@ -98,16 +111,20 @@ export class JobsService {
   }
 
   async getDashboardStats(): Promise<Record<JobStatus, number>> {
-    throw new Error('Not implemented');
+    return this.jobModelAction.countByStatus();
   }
 
   async enqueue(job: Job): Promise<void> {
+    const delay = job.scheduled_at ? Math.max(0, job.scheduled_at.getTime() - Date.now()) : 0;
+
     const bullJob = await this.jobsQueue.add(
       JOBS.PROCESS_JOB,
       { jobId: job.id },
       {
         priority: job.priority,
-        jobId: `job:${job.id}`, // idempotent — Bull deduplicates by jobId
+        jobId: `job:${job.id}`,
+        attempts: job.max_retries,
+        ...(delay > 0 && { delay }),
       },
     );
 
@@ -116,6 +133,7 @@ export class JobsService {
       jobId: job.id,
       bullJobId: bullJob.id,
       priority: job.priority,
+      delay,
     });
   }
 }
