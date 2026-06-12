@@ -62,8 +62,34 @@ export class DlqService {
     return saved;
   }
 
-  async listDlqJobs(): Promise<DlqJob[]> {
-    return this.dlqRepository.find({ order: { created_at: 'DESC' } });
+  async listDlqJobs(
+    page = 1,
+    limit = 20,
+  ): Promise<{
+    data: DlqJob[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+    has_next: boolean;
+    has_previous: boolean;
+  }> {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.dlqRepository.findAndCount({
+      order: { created_at: 'DESC' },
+      skip,
+      take: limit,
+    });
+    const total_pages = Math.ceil(total / limit);
+    return {
+      data,
+      total,
+      page,
+      limit,
+      total_pages,
+      has_next: page < total_pages,
+      has_previous: page > 1,
+    };
   }
 
   async retryDlqJob(dlqJobId: string): Promise<{ jobId: string }> {
