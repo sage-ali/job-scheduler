@@ -23,6 +23,7 @@
     "migration:run": "DOTENV_CONFIG_PATH=.env pnpm run typeorm -- migration:run -d src/database/data-source.ts",
     "migration:revert": "DOTENV_CONFIG_PATH=.env pnpm run typeorm -- migration:revert -d src/database/data-source.ts",
     "migration:show": "DOTENV_CONFIG_PATH=.env pnpm run typeorm -- migration:show -d src/database/data-source.ts",
+    "db:reset": "DOTENV_CONFIG_PATH=.env ts-node -r tsconfig-paths/register -r dotenv/config scripts/reset-db.ts",
     "seed:db": "ts-node -r tsconfig-paths/register scripts/seed-db.ts",
     "seed:live": "ts-node scripts/seed-live.ts",
     "prepare": "husky"
