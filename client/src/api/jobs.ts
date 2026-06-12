@@ -33,10 +33,12 @@ export interface JobStats {
 
 export interface PaginatedJobs {
   data: Job[];
-  currentPage: number;
+  page: number;
   totalPages: number;
-  totalItems: number;
-  itemsPerPage: number;
+  total: number;
+  limit: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
 }
 
 export interface CreateJobDto {
@@ -46,6 +48,7 @@ export interface CreateJobDto {
   scheduled_at?: string;
   recurring_interval?: RecurringInterval;
   depends_on?: string[];
+  max_retries?: number;
 }
 
 export interface QueueStatus {
@@ -68,8 +71,16 @@ export async function fetchStats(): Promise<JobStats> {
 
 export async function fetchJobs(params: ListJobsParams = {}): Promise<PaginatedJobs> {
   const res = await client.get('/jobs', { params });
-  const { data, currentPage, totalPages, totalItems, itemsPerPage } = res.data;
-  return { data, currentPage, totalPages, totalItems, itemsPerPage };
+  const { data, meta } = res.data as { data: Job[]; meta: { page: number; total_pages: number; total: number; limit: number; has_next: boolean; has_previous: boolean } };
+  return {
+    data,
+    page: meta.page,
+    totalPages: meta.total_pages,
+    total: meta.total,
+    limit: meta.limit,
+    hasNext: meta.has_next,
+    hasPrevious: meta.has_previous,
+  };
 }
 
 export async function createJob(dto: CreateJobDto): Promise<Job> {
