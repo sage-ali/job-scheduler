@@ -8,6 +8,7 @@ import { JobModelAction } from '../modules/jobs/jobs.model-action';
 import { DlqJob } from '../modules/dlq/entities/dlq-job.entity';
 import { DlqService } from '../modules/dlq/dlq.service';
 import { RedisModule } from '../modules/redis/redis.module';
+import { SseModule } from '../sse/sse.module';
 import { QueueModule } from './queue.module';
 import { JobWorkerProcessor } from './processors/job-worker.processor';
 import { EmailSimulationHandler } from './handlers/email-simulation.handler';
@@ -17,6 +18,7 @@ import { BackoffService } from '../worker/backoff.service';
   imports: [
     QueueModule,
     RedisModule,
+    SseModule,
     TypeOrmModule.forFeature([Job, DlqJob]),
     BullModule.registerQueueAsync({
       name: QUEUES.JOBS,

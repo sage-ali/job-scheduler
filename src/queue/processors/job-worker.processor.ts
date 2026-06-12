@@ -18,6 +18,7 @@ import { Job } from '@modules/jobs/entities/job.entity';
 import { EmailSimulationHandler } from '../handlers/email-simulation.handler';
 import type { SendEmailPayload } from '@modules/jobs/interfaces/job-payload.interface';
 import { BackoffService } from '@worker/backoff.service';
+import { SseService } from '../../sse/sse.service';
 import { randomUUID } from 'crypto';
 
 interface WorkerJobData {
@@ -34,6 +35,7 @@ export class JobWorkerProcessor {
     private readonly redisService: RedisService,
     private readonly emailHandler: EmailSimulationHandler,
     private readonly backoffService: BackoffService,
+    private readonly sseService: SseService,
   ) {}
 
   @Process(JOBS.PROCESS_JOB)
@@ -92,6 +94,7 @@ export class JobWorkerProcessor {
         },
         transactionOptions: { useTransaction: false },
       });
+      this.sseService.emit('job_started', { id: jobId, status: JobStatus.PROCESSING });
 
       await this.dispatch(job.type as JobType, job.payload);
 
@@ -103,6 +106,7 @@ export class JobWorkerProcessor {
         },
         transactionOptions: { useTransaction: false },
       });
+      this.sseService.emit('job_completed', { id: jobId, status: JobStatus.COMPLETED });
 
       if (job.recurring_interval) {
         await this.scheduleNextRecurrence(job);
@@ -218,6 +222,11 @@ export class JobWorkerProcessor {
             retryCount: bullJob.attemptsMade,
           }),
         ]);
+        this.sseService.emit('job_failed', {
+          id: job.id,
+          status: JobStatus.FAILED,
+          error: error.message,
+        });
       } catch (dbErr) {
         this.logger.error({
           event: 'dlq_write_failed',

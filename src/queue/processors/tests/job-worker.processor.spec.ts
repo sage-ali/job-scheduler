@@ -80,12 +80,16 @@ describe('JobWorkerProcessor', () => {
       calculateWaitMs: jest.fn().mockReturnValue(1000),
     } as unknown as jest.Mocked<BackoffService>;
 
+    const sseService = {
+      emit: jest.fn(),
+    } as unknown as import('../../../sse/sse.service').SseService;
     processor = new JobWorkerProcessor(
       jobModelAction,
       dlqService,
       redisService,
       emailHandler,
       backoffService,
+      sseService,
     );
   });
 

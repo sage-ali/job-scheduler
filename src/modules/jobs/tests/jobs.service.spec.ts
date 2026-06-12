@@ -49,7 +49,10 @@ describe('JobsService', () => {
       getJob: jest.fn().mockResolvedValue(null),
     };
 
-    service = new JobsService(jobModelAction, jobsQueue as unknown as Queue);
+    const sseService = {
+      emit: jest.fn(),
+    } as unknown as import('../../../sse/sse.service').SseService;
+    service = new JobsService(jobModelAction, jobsQueue as unknown as Queue, sseService);
   });
 
   describe('createJob', () => {
@@ -145,13 +148,12 @@ describe('JobsService', () => {
       expect(result.status).toBe(JobStatus.CANCELLED);
     });
 
-    it('cancels a PROCESSING job without touching Bull', async () => {
-      const job = makeJob({ status: JobStatus.PROCESSING });
-      jobModelAction.get.mockResolvedValue(job);
-      jobModelAction.update.mockResolvedValue({ ...job, status: JobStatus.CANCELLED } as Job);
+    it('throws 409 when job is currently PROCESSING', async () => {
+      jobModelAction.get.mockResolvedValue(makeJob({ status: JobStatus.PROCESSING }));
 
-      await service.cancelJob('job-uuid');
-
+      await expect(service.cancelJob('job-uuid')).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+      });
       expect(jobsQueue.getJob).not.toHaveBeenCalled();
     });
 

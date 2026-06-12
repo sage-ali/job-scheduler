@@ -9,6 +9,7 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { ListJobsQueryDto } from './dto/list-jobs.query.dto';
 import { Job } from './entities/job.entity';
 import { JobStatus } from './enums/job-status.enum';
+import { SseService } from '../../sse/sse.service';
 import * as SYS_MSG from '@constants/system-messages';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class JobsService {
   constructor(
     private readonly jobModelAction: JobModelAction,
     @InjectQueue(QUEUES.JOBS) private readonly jobsQueue: Queue,
+    private readonly sseService: SseService,
   ) {}
 
   async createJob(dto: CreateJobDto): Promise<Job> {
@@ -42,6 +44,13 @@ export class JobsService {
       type: job.type,
       priority: job.priority,
       scheduled_at: job.scheduled_at,
+    });
+
+    this.sseService.emit('job_created', {
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      priority: job.priority,
     });
 
     const isImmediate = !job.scheduled_at && (!job.depends_on || job.depends_on.length === 0);
@@ -111,6 +120,7 @@ export class JobsService {
     });
 
     this.logger.log({ event: 'job_cancelled', jobId: id, previousStatus: job.status });
+    this.sseService.emit('job_cancelled', { id, status: JobStatus.CANCELLED });
 
     return { ...job, status: JobStatus.CANCELLED };
   }

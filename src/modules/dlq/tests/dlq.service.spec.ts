@@ -45,7 +45,10 @@ describe('DlqService', () => {
       handle: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<EmailSimulationHandler>;
 
-    service = new DlqService(repo, jobsService, emailHandler);
+    const sseService = {
+      emit: jest.fn(),
+    } as unknown as import('../../../sse/sse.service').SseService;
+    service = new DlqService(repo, jobsService, emailHandler, sseService);
   });
 
   describe('moveToDlq', () => {
@@ -102,6 +105,7 @@ describe('DlqService', () => {
         repo,
         jobsService,
         undefined as unknown as EmailSimulationHandler,
+        undefined as unknown as import('../../../sse/sse.service').SseService,
       );
       const entry = makeDlqJob();
       repo.create.mockReturnValue(entry);
@@ -138,6 +142,7 @@ describe('DlqService', () => {
         repo,
         undefined as unknown as JobsService,
         emailHandler,
+        undefined as unknown as import('../../../sse/sse.service').SseService,
       );
       repo.findOne.mockResolvedValue(makeDlqJob());
 

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DlqJob } from './entities/dlq-job.entity';
 import { JobsService } from '../jobs/jobs.service';
+import { SseService } from '../../sse/sse.service';
 import { CustomHttpException } from '@common/exceptions/custom-http.exception';
 import { EmailSimulationHandler } from '@queue/handlers/email-simulation.handler';
 import * as SYS_MSG from '@constants/system-messages';
@@ -19,6 +20,7 @@ export class DlqService {
     private readonly dlqRepository: Repository<DlqJob>,
     @Optional() private readonly jobsService: JobsService,
     @Optional() private readonly emailHandler: EmailSimulationHandler,
+    @Optional() private readonly sseService: SseService,
   ) {}
 
   async moveToDlq(params: {
@@ -48,6 +50,12 @@ export class DlqService {
       type: params.type,
       retryCount: params.retryCount,
       error: params.errorMessage,
+    });
+
+    this.sseService?.emit('dlq_added', {
+      dlqJobId: saved.id,
+      originalJobId: params.originalJobId,
+      type: params.type,
     });
 
     await this.checkThresholdAndAlert();
