@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  MessageEvent,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -14,6 +15,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { JobsService } from './jobs.service';
+import { SseService } from '../../sse/sse.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { ListJobsQueryDto } from './dto/list-jobs.query.dto';
 import * as SYS_MSG from '@constants/system-messages';
@@ -29,7 +31,10 @@ import {
 @ApiTags('Jobs')
 @Controller('jobs')
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly sseService: SseService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -74,7 +79,7 @@ export class JobsController {
 
   @Sse('events')
   @StreamEventsDocs()
-  streamEvents(): Observable<never> {
-    throw new Error('SSE not yet implemented');
+  streamEvents(): Observable<MessageEvent> {
+    return this.sseService.stream();
   }
 }

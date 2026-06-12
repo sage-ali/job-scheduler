@@ -1,5 +1,4 @@
-import { Injectable } from '@nestjs/common';
-import type { MessageEvent } from '@nestjs/common';
+import { Injectable, MessageEvent } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Observable } from 'rxjs';
 

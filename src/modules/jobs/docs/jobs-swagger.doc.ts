@@ -204,9 +204,18 @@ export function StreamEventsDocs() {
     ApiOperation({
       summary: 'Stream live job status events (SSE)',
       description:
-        'Server-Sent Events stream that emits job lifecycle events in real time. ' +
-        'Connect with `EventSource` — each event has a `type` (e.g. `job.completed`) and a `data` payload. ' +
-        '**Note:** This endpoint is a stub; SSE wiring is implemented in Phase 4.',
+        'Server-Sent Events stream. Connect with `EventSource` on the frontend — ' +
+        'each message arrives with a named `event:` field so you can use ' +
+        '`eventSource.addEventListener("job_created", fn)` instead of generic `onmessage`.\n\n' +
+        '**Event types and data shapes:**\n\n' +
+        '| event | data |\n' +
+        '|---|---|\n' +
+        '| `job_created` | `{ id, type, status, priority }` |\n' +
+        '| `job_started` | `{ id, status: "processing" }` |\n' +
+        '| `job_completed` | `{ id, status: "completed" }` |\n' +
+        '| `job_failed` | `{ id, status: "failed", error }` |\n' +
+        '| `job_cancelled` | `{ id, status: "cancelled" }` |\n' +
+        '| `dlq_added` | `{ dlqJobId, originalJobId, type }` |',
     }),
     ApiResponse({
       status: 200,
@@ -215,7 +224,10 @@ export function StreamEventsDocs() {
         'text/event-stream': {
           schema: {
             type: 'string',
-            example: 'data: {"type":"job.completed","jobId":"b3d4c1e9-..."}\n\n',
+            example:
+              'event: job_created\ndata: {"id":"b3d4c1e9-...","type":"send_email","status":"pending","priority":2}\n\n' +
+              'event: job_started\ndata: {"id":"b3d4c1e9-...","status":"processing"}\n\n' +
+              'event: job_completed\ndata: {"id":"b3d4c1e9-...","status":"completed"}\n\n',
           },
         },
       },
