@@ -1,0 +1,148 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install API dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint:check
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build API
+        run: pnpm build
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: client
+        run: pnpm build
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: checks
+    if: github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate required variables
+        run: |
+          if [ -z "${{ vars.APP_PATH }}" ]; then
+            echo "APP_PATH environment variable is required."
+            exit 1
+          fi
+          if [ -z "${{ vars.APP_NAME }}" ]; then
+            echo "APP_NAME environment variable is required."
+            exit 1
+          fi
+
+      - name: Create app directory on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: mkdir -p "${{ vars.APP_PATH }}"
+
+      - name: Clean app directory (preserve .env and node_modules)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            find "${{ vars.APP_PATH }}" -mindepth 1 \
+              -maxdepth 1 \
+              ! -name ".env" \
+              ! -name "node_modules" \
+              -exec rm -rf {} +
+
+      - name: Copy project files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "."
+          target: ${{ vars.APP_PATH }}
+          overwrite: true
+          strip_components: 0
+          exclude: ".git,node_modules,dist,.env,client/node_modules,client/dist"
+
+      - name: Install, build, migrate, and restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ vars.APP_PATH }}"
+
+            if [ ! -f .env ]; then
+              echo ".env file is missing on the server."
+              exit 1
+            fi
+
+            # Ensure pnpm is available — suppress corepack download prompts
+            export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+            corepack enable
+            corepack prepare pnpm@11.1.1 --activate
+            pnpm --version
+
+            # Install and build API
+            # onlyBuiltDependencies in package.json controls which build scripts run —
+            # no interactive approval needed
+            pnpm install --frozen-lockfile --prod=false
+            pnpm migration:run
+            pnpm build
+
+            # Install and build frontend
+            cd client
+            pnpm install --frozen-lockfile
+            pnpm build
+            cd ..
+
+            # Restart or start PM2 process
+            if pm2 describe "${{ vars.APP_NAME }}" > /dev/null 2>&1; then
+              pm2 restart "${{ vars.APP_NAME }}" --update-env
+            else
+              pm2 start pnpm --name "${{ vars.APP_NAME }}" -- start:prod
+            fi
+            pm2 save
