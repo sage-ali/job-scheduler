@@ -30,6 +30,7 @@
     "db:reset": "DOTENV_CONFIG_PATH=.env ts-node -r tsconfig-paths/register -r dotenv/config scripts/reset-db.ts",
     "seed:db": "ts-node -r tsconfig-paths/register scripts/seed-db.ts",
     "seed:live": "ts-node scripts/seed-live.ts",
+    "perf": "ts-node scripts/perf-test.ts",
     "prepare": "husky"
   },
   "dependencies": {
