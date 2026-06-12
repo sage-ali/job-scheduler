@@ -16,7 +16,13 @@ import { JobStatus } from '@modules/jobs/enums/job-status.enum';
 import { JobType, RECURRING_INTERVAL_MS } from '@modules/jobs/enums/job-type.enum';
 import { Job } from '@modules/jobs/entities/job.entity';
 import { EmailSimulationHandler } from '../handlers/email-simulation.handler';
-import type { SendEmailPayload } from '@modules/jobs/interfaces/job-payload.interface';
+import { WebhookDeliveryHandler } from '../handlers/webhook-delivery.handler';
+import { LogProcessingHandler } from '../handlers/log-processing.handler';
+import type {
+  SendEmailPayload,
+  WebhookDeliveryPayload,
+  LogProcessingPayload,
+} from '@modules/jobs/interfaces/job-payload.interface';
 import { BackoffService } from '@worker/backoff.service';
 import { SseService } from '../../sse/sse.service';
 import { randomUUID } from 'crypto';
@@ -34,6 +40,8 @@ export class JobWorkerProcessor {
     private readonly dlqService: DlqService,
     private readonly redisService: RedisService,
     private readonly emailHandler: EmailSimulationHandler,
+    private readonly webhookHandler: WebhookDeliveryHandler,
+    private readonly logHandler: LogProcessingHandler,
     private readonly backoffService: BackoffService,
     private readonly sseService: SseService,
   ) {}
@@ -151,9 +159,11 @@ export class JobWorkerProcessor {
         await this.emailHandler.handle(payload as unknown as SendEmailPayload);
         break;
       case JobType.WEBHOOK_DELIVERY:
-        throw new Error('webhook_delivery handler not yet implemented');
+        await this.webhookHandler.handle(payload as unknown as WebhookDeliveryPayload);
+        break;
       case JobType.LOG_PROCESSING:
-        throw new Error('log_processing handler not yet implemented');
+        await this.logHandler.handle(payload as unknown as LogProcessingPayload);
+        break;
       default:
         throw new Error(`Unknown job type: ${type}`);
     }

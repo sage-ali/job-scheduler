@@ -12,6 +12,8 @@ import { SseModule } from '../sse/sse.module';
 import { QueueModule } from './queue.module';
 import { JobWorkerProcessor } from './processors/job-worker.processor';
 import { EmailSimulationHandler } from './handlers/email-simulation.handler';
+import { WebhookDeliveryHandler } from './handlers/webhook-delivery.handler';
+import { LogProcessingHandler } from './handlers/log-processing.handler';
 import { BackoffService } from '../worker/backoff.service';
 
 @Module({
@@ -46,6 +48,8 @@ import { BackoffService } from '../worker/backoff.service';
   providers: [
     JobWorkerProcessor,
     EmailSimulationHandler,
+    WebhookDeliveryHandler,
+    LogProcessingHandler,
     BackoffService,
     JobModelAction,
     DlqService,

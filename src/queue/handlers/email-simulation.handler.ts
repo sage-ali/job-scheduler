@@ -1,19 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { SendEmailPayload } from '@modules/jobs/interfaces/job-payload.interface';
 import { maskEmail } from '@common/logger/pii';
+import { randomDelay, shouldSimulateFail } from './simulation.utils';
 
 // 15% failure rate simulates realistic retry/DLQ traffic without a real SMTP server.
 const FAILURE_RATE = 0.15;
-const MIN_DELAY_MS = 100;
-const MAX_DELAY_MS = 600;
-
-function randomDelay(): number {
-  return Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS) + MIN_DELAY_MS);
-}
-
-function shouldSimulateFail(): boolean {
-  return Math.random() < FAILURE_RATE;
-}
 
 @Injectable()
 export class EmailSimulationHandler {
@@ -28,9 +19,9 @@ export class EmailSimulationHandler {
       subject,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, randomDelay()));
+    await randomDelay(100, 600);
 
-    if (shouldSimulateFail()) {
+    if (shouldSimulateFail(FAILURE_RATE)) {
       this.logger.warn({
         event: 'email_simulation_provider_error',
         to: maskEmail(to),

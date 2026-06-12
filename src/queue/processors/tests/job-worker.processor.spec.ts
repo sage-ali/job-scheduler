@@ -3,6 +3,8 @@ import { JobModelAction } from '@modules/jobs/jobs.model-action';
 import { DlqService } from '@modules/dlq/dlq.service';
 import { RedisService } from '@modules/redis/redis.service';
 import { EmailSimulationHandler } from '@queue/handlers/email-simulation.handler';
+import { WebhookDeliveryHandler } from '@queue/handlers/webhook-delivery.handler';
+import { LogProcessingHandler } from '@queue/handlers/log-processing.handler';
 import { BackoffService } from '@worker/backoff.service';
 import { JobStatus } from '@modules/jobs/enums/job-status.enum';
 import { JobType } from '@modules/jobs/enums/job-type.enum';
@@ -11,6 +13,8 @@ import type { Job } from '@modules/jobs/entities/job.entity';
 import type { Job as BullJob } from 'bull';
 
 jest.mock('@queue/handlers/email-simulation.handler');
+jest.mock('@queue/handlers/webhook-delivery.handler');
+jest.mock('@queue/handlers/log-processing.handler');
 
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -53,6 +57,8 @@ describe('JobWorkerProcessor', () => {
   let dlqService: jest.Mocked<DlqService>;
   let redisService: jest.Mocked<RedisService>;
   let emailHandler: jest.Mocked<EmailSimulationHandler>;
+  let webhookHandler: jest.Mocked<WebhookDeliveryHandler>;
+  let logHandler: jest.Mocked<LogProcessingHandler>;
   let backoffService: jest.Mocked<BackoffService>;
 
   beforeEach(() => {
@@ -76,6 +82,14 @@ describe('JobWorkerProcessor', () => {
       handle: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<EmailSimulationHandler>;
 
+    webhookHandler = {
+      handle: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<WebhookDeliveryHandler>;
+
+    logHandler = {
+      handle: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<LogProcessingHandler>;
+
     backoffService = {
       calculateWaitMs: jest.fn().mockReturnValue(1000),
     } as unknown as jest.Mocked<BackoffService>;
@@ -88,6 +102,8 @@ describe('JobWorkerProcessor', () => {
       dlqService,
       redisService,
       emailHandler,
+      webhookHandler,
+      logHandler,
       backoffService,
       sseService,
     );
@@ -173,8 +189,36 @@ describe('JobWorkerProcessor', () => {
       );
     });
 
+    it('dispatches webhook_delivery jobs to WebhookDeliveryHandler', async () => {
+      const job = makeJob({
+        type: JobType.WEBHOOK_DELIVERY,
+        payload: { url: 'https://example.com/hook', method: 'POST' },
+      });
+      jobModelAction.get.mockResolvedValue(job);
+
+      await processor.handleJob(makeBullJob('job-uuid'));
+
+      expect(webhookHandler.handle).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://example.com/hook' }),
+      );
+    });
+
+    it('dispatches log_processing jobs to LogProcessingHandler', async () => {
+      const job = makeJob({
+        type: JobType.LOG_PROCESSING,
+        payload: { source: 'api-gateway', level: 'info', message: 'Request received' },
+      });
+      jobModelAction.get.mockResolvedValue(job);
+
+      await processor.handleJob(makeBullJob('job-uuid'));
+
+      expect(logHandler.handle).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'api-gateway' }),
+      );
+    });
+
     it('releases the lock even if processing throws', async () => {
-      const job = makeJob({ type: 'webhook_delivery' as never });
+      const job = makeJob({ type: 'unknown_type' as never });
       jobModelAction.get.mockResolvedValue(job);
 
       await expect(processor.handleJob(makeBullJob('job-uuid'))).rejects.toThrow();
