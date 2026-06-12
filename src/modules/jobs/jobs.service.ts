@@ -23,6 +23,16 @@ export class JobsService {
   ) {}
 
   async createJob(dto: CreateJobDto): Promise<Job> {
+    if (dto.depends_on && dto.depends_on.length > 0) {
+      const deps = await this.jobModelAction.findJobsByIds(dto.depends_on);
+      const terminal = deps.filter(
+        (d) => d.status === JobStatus.FAILED || d.status === JobStatus.CANCELLED,
+      );
+      if (terminal.length > 0) {
+        throw new CustomHttpException(SYS_MSG.INVALID_DEPENDS_ON, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+    }
+
     const job = await this.jobModelAction.create({
       createPayload: {
         type: dto.type,
@@ -33,6 +43,7 @@ export class JobsService {
         recurring_interval: dto.recurring_interval ?? null,
         depends_on: dto.depends_on ?? null,
         retry_count: 0,
+        max_retries: dto.max_retries ?? 3,
         priority_score: dto.priority ?? 2,
       },
       transactionOptions: { useTransaction: false },

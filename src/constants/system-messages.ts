@@ -34,8 +34,13 @@ export const QUEUE_STATUS_FETCHED = 'Queue status retrieved';
 export const QUEUE_PAUSED = 'Queue paused — workers will finish in-flight jobs then stop';
 export const QUEUE_RESUMED = 'Queue resumed — workers will pick up new jobs';
 
+// Jobs — DAG
+export const INVALID_DEPENDS_ON =
+  'depends_on contains jobs in a terminal state (failed or cancelled) that can never complete';
+
 // Benchmark
 export const BENCHMARK_COMPLETE = 'Benchmark complete';
+export const THROUGHPUT_BENCHMARK_COMPLETE = 'Throughput benchmark complete';
 
 // DLQ
 export const DLQ_JOB_NOT_FOUND = (id: string) => `DLQ job ${id} not found`;

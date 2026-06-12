@@ -71,4 +71,16 @@ export class CreateJobDto {
   @IsArray()
   @IsUUID('4', { each: true })
   depends_on?: string[];
+
+  @ApiPropertyOptional({
+    example: 3,
+    default: 3,
+    description:
+      'Maximum number of retry attempts before the job is moved to the DLQ. Use 0 to disable retries.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  max_retries?: number;
 }
