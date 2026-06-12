@@ -141,9 +141,9 @@ jobs:
             pnpm build
             pnpm --filter client build
 
-            if pm2 describe "${{ vars.APP_NAME }}" > /dev/null 2>&1; then
-              pm2 restart "${{ vars.APP_NAME }}" --update-env
+            if pm2 describe api > /dev/null 2>&1; then
+              pm2 reload ecosystem.config.js --env production --update-env
             else
-              pm2 start pnpm --name "${{ vars.APP_NAME }}" -- start:prod
+              pm2 start ecosystem.config.js --env production
             fi
             pm2 save
