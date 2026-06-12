@@ -23,6 +23,9 @@ import {
   CreateJobDocs,
   ListJobsDocs,
   GetStatsDocs,
+  GetQueueStatusDocs,
+  PauseQueueDocs,
+  ResumeQueueDocs,
   GetJobDocs,
   CancelJobDocs,
   StreamEventsDocs,
@@ -61,6 +64,29 @@ export class JobsController {
   async getDashboardStats() {
     const data = await this.jobsService.getDashboardStats();
     return { statusCode: HttpStatus.OK, message: SYS_MSG.JOB_STATS_FETCHED, data };
+  }
+
+  @Get('queue/status')
+  @GetQueueStatusDocs()
+  async getQueueStatus() {
+    const data = await this.jobsService.getQueueStatus();
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.QUEUE_STATUS_FETCHED, data };
+  }
+
+  @Post('queue/pause')
+  @HttpCode(HttpStatus.OK)
+  @PauseQueueDocs()
+  async pauseQueue() {
+    await this.jobsService.pauseQueue();
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.QUEUE_PAUSED, data: null };
+  }
+
+  @Post('queue/resume')
+  @HttpCode(HttpStatus.OK)
+  @ResumeQueueDocs()
+  async resumeQueue() {
+    await this.jobsService.resumeQueue();
+    return { statusCode: HttpStatus.OK, message: SYS_MSG.QUEUE_RESUMED, data: null };
   }
 
   @Get(':id')

@@ -129,6 +129,26 @@ export class JobsService {
     return this.jobModelAction.countByStatus();
   }
 
+  async getQueueStatus(): Promise<{ paused: boolean; workers: number }> {
+    const [paused, workers] = await Promise.all([
+      this.jobsQueue.isPaused(),
+      this.jobsQueue.getWorkers(),
+    ]);
+    return { paused, workers: workers.length };
+  }
+
+  async pauseQueue(): Promise<void> {
+    await this.jobsQueue.pause();
+    this.sseService.emit('queue_paused', { paused: true });
+    this.logger.log({ event: 'queue_paused' });
+  }
+
+  async resumeQueue(): Promise<void> {
+    await this.jobsQueue.resume();
+    this.sseService.emit('queue_resumed', { paused: false });
+    this.logger.log({ event: 'queue_resumed' });
+  }
+
   async enqueue(job: Job): Promise<void> {
     const delay = job.scheduled_at ? Math.max(0, job.scheduled_at.getTime() - Date.now()) : 0;
 

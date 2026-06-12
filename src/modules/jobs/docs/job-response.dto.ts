@@ -102,6 +102,17 @@ export class PaginationMetaDto {
   has_previous: boolean;
 }
 
+export class QueueStatusDto {
+  @ApiProperty({ example: false, description: 'true if the queue is paused' })
+  paused: boolean;
+
+  @ApiProperty({
+    example: 1,
+    description: 'Number of active worker processes connected to this queue',
+  })
+  workers: number;
+}
+
 export class DashboardStatsDto {
   @ApiProperty({ example: 5 })
   pending: number;

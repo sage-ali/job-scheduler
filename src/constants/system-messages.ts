@@ -29,6 +29,11 @@ export const JOB_CANNOT_BE_CANCELLED = (status: string) =>
 export const JOB_DEPENDENCY_NOT_MET = (depId: string) =>
   `Dependency job ${depId} has not completed successfully`;
 
+// Queue
+export const QUEUE_STATUS_FETCHED = 'Queue status retrieved';
+export const QUEUE_PAUSED = 'Queue paused — workers will finish in-flight jobs then stop';
+export const QUEUE_RESUMED = 'Queue resumed — workers will pick up new jobs';
+
 // Benchmark
 export const BENCHMARK_COMPLETE = 'Benchmark complete';
 

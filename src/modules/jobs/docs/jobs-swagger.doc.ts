@@ -8,7 +8,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import * as SYS_MSG from '@constants/system-messages';
-import { JobDto, PaginationMetaDto, DashboardStatsDto } from './job-response.dto';
+import { JobDto, PaginationMetaDto, DashboardStatsDto, QueueStatusDto } from './job-response.dto';
 
 // ---------------------------------------------------------------------------
 // Reusable error shapes
@@ -195,6 +195,76 @@ export function CancelJobDocs() {
       ),
     }),
     NotFoundResponse('Job'),
+    CommonErrorResponses(),
+  );
+}
+
+export function GetQueueStatusDocs() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Get queue status',
+      description:
+        'Returns whether the Bull queue is paused and how many worker processes are currently ' +
+        'connected. Worker count is read from Redis — reflects live worker processes, not concurrency slots.',
+    }),
+    ApiExtraModels(QueueStatusDto),
+    ApiOkResponse({
+      description: SYS_MSG.QUEUE_STATUS_FETCHED,
+      schema: {
+        properties: {
+          success: { type: 'boolean', example: true },
+          statusCode: { type: 'number', example: HttpStatus.OK },
+          message: { type: 'string', example: SYS_MSG.QUEUE_STATUS_FETCHED },
+          data: { $ref: getSchemaPath(QueueStatusDto) },
+        },
+      },
+    }),
+    CommonErrorResponses(),
+  );
+}
+
+export function PauseQueueDocs() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Pause the job queue',
+      description:
+        'Signals all workers to stop picking up new jobs. In-flight jobs run to completion. ' +
+        'Emits a `queue_paused` SSE event. Safe to call multiple times.',
+    }),
+    ApiOkResponse({
+      description: SYS_MSG.QUEUE_PAUSED,
+      schema: {
+        properties: {
+          success: { type: 'boolean', example: true },
+          statusCode: { type: 'number', example: HttpStatus.OK },
+          message: { type: 'string', example: SYS_MSG.QUEUE_PAUSED },
+          data: { type: 'null', example: null },
+        },
+      },
+    }),
+    CommonErrorResponses(),
+  );
+}
+
+export function ResumeQueueDocs() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Resume the job queue',
+      description:
+        'Removes the pause signal — workers resume picking up jobs immediately. ' +
+        'Emits a `queue_resumed` SSE event. Safe to call when queue is already running.',
+    }),
+    ApiOkResponse({
+      description: SYS_MSG.QUEUE_RESUMED,
+      schema: {
+        properties: {
+          success: { type: 'boolean', example: true },
+          statusCode: { type: 'number', example: HttpStatus.OK },
+          message: { type: 'string', example: SYS_MSG.QUEUE_RESUMED },
+          data: { type: 'null', example: null },
+        },
+      },
+    }),
     CommonErrorResponses(),
   );
 }
