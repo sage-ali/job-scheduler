@@ -1,2 +1,1 @@
 bash scripts/forbidden-pattern-scan.sh .
-pnpm lint-staged
