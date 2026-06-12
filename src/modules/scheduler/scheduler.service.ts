@@ -63,6 +63,29 @@ export class SchedulerService {
         try {
           if (job.depends_on && job.depends_on.length > 0) {
             const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
+
+            const terminal = deps.filter(
+              (d) => d.status === JobStatus.FAILED || d.status === JobStatus.CANCELLED,
+            );
+            if (terminal.length > 0) {
+              // A terminated dependency can never complete — cascade-fail this job immediately.
+              await this.jobModelAction.update({
+                identifierOptions: { id: job.id },
+                updatePayload: {
+                  status: JobStatus.FAILED,
+                  started_at: new Date(),
+                  completed_at: new Date(),
+                },
+                transactionOptions: { useTransaction: false },
+              });
+              this.logger.warn({
+                event: 'scheduler_dag_cascade_fail',
+                jobId: job.id,
+                terminalDepIds: terminal.map((d) => d.id),
+              });
+              continue;
+            }
+
             const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
             if (unmet.length > 0) {
               this.logger.log({
