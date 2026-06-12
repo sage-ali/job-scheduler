@@ -7,6 +7,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      reset_db:
+        description: 'Drop and recreate the database schema, run migrations, and re-seed'
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-cd-${{ github.ref }}
@@ -48,7 +54,7 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     needs: checks
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     environment: production
 
     steps:
@@ -114,7 +120,19 @@ jobs:
             pnpm --version
 
             pnpm install --frozen-lockfile --prod=false
-            pnpm migration:run
+
+            if [ "${{ inputs.reset_db }}" = "true" ]; then
+              echo "--- DB RESET requested ---"
+              docker exec job-scheduler-postgres-1 psql \
+                -U "${{ vars.DB_USER }}" \
+                -d "${{ vars.DB_NAME }}" \
+                -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+              DOTENV_CONFIG_PATH=.env pnpm migration:run
+              pnpm seed:db
+              echo "--- DB RESET complete ---"
+            else
+              pnpm migration:run
+            fi
             pnpm build
             pnpm --filter client build
 
