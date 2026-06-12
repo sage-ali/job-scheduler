@@ -50,6 +50,12 @@ export class Job extends BaseEntity {
   @Column({ type: 'simple-array', nullable: true })
   depends_on: string[] | null;
 
+  // Set by the worker when it claims the job; cleared on completion or reset.
+  // The scheduler sweep treats any PROCESSING job with an expired lease as stalled
+  // and resets it to PENDING so it can be re-enqueued.
+  @Column({ type: 'timestamptz', nullable: true })
+  lease_expires_at: Date | null;
+
   // Effective priority score used by the heap for ordering.
   // Computed as: priority * BASE_WEIGHT + age_boost (for starvation prevention).
   // Lower score = higher priority. Refreshed by the scheduler sweep.
