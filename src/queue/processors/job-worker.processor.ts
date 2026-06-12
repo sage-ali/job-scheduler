@@ -8,10 +8,9 @@ import {
 } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import type { Job as BullJob } from 'bull';
-import { JOBS, QUEUES, WORKER_LOCK } from '@common/constants/queue.constants';
+import { JOBS, QUEUES } from '@common/constants/queue.constants';
 import { JobModelAction } from '@modules/jobs/jobs.model-action';
 import { DlqService } from '@modules/dlq/dlq.service';
-import { RedisService } from '@modules/redis/redis.service';
 import { JobStatus } from '@modules/jobs/enums/job-status.enum';
 import { JobType, RECURRING_INTERVAL_MS } from '@modules/jobs/enums/job-type.enum';
 import { Job } from '@modules/jobs/entities/job.entity';
@@ -25,7 +24,7 @@ import type {
 } from '@modules/jobs/interfaces/job-payload.interface';
 import { BackoffService } from '@worker/backoff.service';
 import { SseService } from '../../sse/sse.service';
-import { randomUUID } from 'crypto';
+import { env } from '@config/env';
 
 interface WorkerJobData {
   jobId: string;
@@ -38,7 +37,6 @@ export class JobWorkerProcessor {
   constructor(
     private readonly jobModelAction: JobModelAction,
     private readonly dlqService: DlqService,
-    private readonly redisService: RedisService,
     private readonly emailHandler: EmailSimulationHandler,
     private readonly webhookHandler: WebhookDeliveryHandler,
     private readonly logHandler: LogProcessingHandler,
@@ -46,84 +44,70 @@ export class JobWorkerProcessor {
     private readonly sseService: SseService,
   ) {}
 
-  @Process(JOBS.PROCESS_JOB)
+  @Process({ name: JOBS.PROCESS_JOB, concurrency: env.QUEUE_CONCURRENCY })
   async handleJob(bullJob: BullJob<WorkerJobData>): Promise<void> {
     const { jobId } = bullJob.data;
 
-    const lockKey = `${WORKER_LOCK.KEY_PREFIX}${jobId}`;
-    const lockToken = randomUUID();
-    const acquired = await this.redisService.setNx(lockKey, lockToken, WORKER_LOCK.TTL_SECONDS);
-    if (!acquired) {
-      this.logger.warn({
-        event: 'job_lock_contention',
-        jobId,
-        bullJobId: bullJob.id,
-      });
+    const job = await this.jobModelAction.get({ identifierOptions: { id: jobId } });
+
+    if (!job) {
+      this.logger.warn({ event: 'job_not_found', jobId, bullJobId: bullJob.id });
       return;
     }
 
-    try {
-      const job = await this.jobModelAction.get({ identifierOptions: { id: jobId } });
-
-      if (!job) {
-        this.logger.warn({ event: 'job_not_found', jobId, bullJobId: bullJob.id });
-        return;
-      }
-
-      if (job.status === JobStatus.CANCELLED) {
-        this.logger.log({ event: 'job_skip_cancelled', jobId });
-        return;
-      }
-
-      if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
-        this.logger.log({ event: 'job_skip_terminal', jobId, status: job.status });
-        return;
-      }
-
-      if (job.depends_on && job.depends_on.length > 0) {
-        const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
-        const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
-        if (unmet.length > 0) {
-          this.logger.warn({
-            event: 'job_dag_unmet',
-            jobId,
-            unmetDeps: unmet.map((d) => d.id),
-          });
-          // Return without throwing — Bull won't retry. Scheduler sweep re-enqueues when deps resolve.
-          return;
-        }
-      }
-
-      await this.jobModelAction.update({
-        identifierOptions: { id: jobId },
-        updatePayload: {
-          status: JobStatus.PROCESSING,
-          started_at: new Date(),
-        },
-        transactionOptions: { useTransaction: false },
-      });
-      this.sseService.emit('job_started', { id: jobId, status: JobStatus.PROCESSING });
-
-      await this.dispatch(job.type as JobType, job.payload);
-
-      await this.jobModelAction.update({
-        identifierOptions: { id: jobId },
-        updatePayload: {
-          status: JobStatus.COMPLETED,
-          completed_at: new Date(),
-        },
-        transactionOptions: { useTransaction: false },
-      });
-      this.sseService.emit('job_completed', { id: jobId, status: JobStatus.COMPLETED });
-
-      if (job.recurring_interval) {
-        await this.scheduleNextRecurrence(job);
-      }
-
-      this.logger.log({ event: 'job_completed', jobId, type: job.type });
-    } finally {
-      await this.redisService.releaseLock(lockKey, lockToken);
+    if (job.status === JobStatus.CANCELLED) {
+      this.logger.log({ event: 'job_skip_cancelled', jobId });
+      return;
     }
+
+    if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
+      this.logger.log({ event: 'job_skip_terminal', jobId, status: job.status });
+      return;
+    }
+
+    if (job.depends_on && job.depends_on.length > 0) {
+      const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
+      const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
+      if (unmet.length > 0) {
+        this.logger.warn({
+          event: 'job_dag_unmet',
+          jobId,
+          unmetDeps: unmet.map((d) => d.id),
+        });
+        // Return without throwing — Bull won't retry. Scheduler sweep re-enqueues when deps resolve.
+        return;
+      }
+    }
+
+    // Atomic claim: UPDATE WHERE status = 'pending' — exactly one worker wins this race.
+    const leaseExpiresAt = new Date(Date.now() + env.LEASE_TTL_SECONDS * 1000);
+    const claimed = await this.jobModelAction.claimJob(jobId, leaseExpiresAt);
+
+    if (!claimed) {
+      this.logger.warn({ event: 'job_claim_failed', jobId, bullJobId: bullJob.id });
+      return;
+    }
+
+    this.sseService.emit('job_started', { id: jobId, status: JobStatus.PROCESSING });
+
+    await this.dispatch(job.type as JobType, job.payload);
+
+    await this.jobModelAction.update({
+      identifierOptions: { id: jobId },
+      updatePayload: {
+        status: JobStatus.COMPLETED,
+        completed_at: new Date(),
+        lease_expires_at: null,
+      },
+      transactionOptions: { useTransaction: false },
+    });
+    this.sseService.emit('job_completed', { id: jobId, status: JobStatus.COMPLETED });
+
+    if (job.recurring_interval) {
+      await this.scheduleNextRecurrence(job);
+    }
+
+    this.logger.log({ event: 'job_completed', jobId, type: job.type });
   }
 
   private async scheduleNextRecurrence(job: Job): Promise<void> {
@@ -220,6 +204,7 @@ export class JobWorkerProcessor {
             updatePayload: {
               status: JobStatus.FAILED,
               error_message: error.message,
+              lease_expires_at: null,
             },
             transactionOptions: { useTransaction: false },
           }),
@@ -256,7 +241,8 @@ export class JobWorkerProcessor {
 
   @OnQueueStalled()
   onStalled(bullJob: BullJob<WorkerJobData>): void {
-    // Bull auto re-queues stalled jobs — DB status must not be changed here.
+    // Bull auto re-queues stalled jobs. The scheduler's recovery sweep detects the
+    // expired lease and resets DB status to PENDING so the re-queued job can be claimed.
     this.logger.warn({
       event: 'job_bull_stalled',
       jobId: bullJob.data.jobId,
