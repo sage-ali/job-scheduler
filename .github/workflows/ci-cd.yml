@@ -132,11 +132,11 @@ jobs:
                 -U "${{ vars.DB_USER }}" \
                 -d "${{ vars.DB_NAME }}" \
                 -c "DROP TABLE IF EXISTS dlq_jobs, jobs, migrations CASCADE;"
-              DOTENV_CONFIG_PATH=.env pnpm migration:run
+              pnpm migration:run
               pnpm seed:db
               echo "--- DB RESET complete ---"
             else
-              DOTENV_CONFIG_PATH=.env pnpm migration:run
+              pnpm migration:run
             fi
             pnpm build
             pnpm --filter client build
