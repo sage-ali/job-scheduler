@@ -40,6 +40,28 @@ export class JobModelAction extends AbstractModelAction<Job> {
     });
   }
 
+  async claimJob(jobId: string, leaseExpiresAt: Date): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(Job)
+      .set({
+        status: JobStatus.PROCESSING,
+        started_at: new Date(),
+        lease_expires_at: leaseExpiresAt,
+      })
+      .where('id = :id AND status = :status', { id: jobId, status: JobStatus.PENDING })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async findStalledJobs(limit: number): Promise<Job[]> {
+    return this.repository.find({
+      where: { status: JobStatus.PROCESSING, lease_expires_at: LessThan(new Date()) },
+      take: limit,
+      order: { lease_expires_at: 'ASC' },
+    });
+  }
+
   async countByStatus(): Promise<Record<JobStatus, number>> {
     const rows = await this.repository
       .createQueryBuilder('job')
