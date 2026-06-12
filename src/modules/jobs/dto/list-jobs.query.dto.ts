@@ -21,6 +21,7 @@ export class ListJobsQueryDto {
     description: 'Filter by priority level (1 = HIGH, 2 = MEDIUM, 3 = LOW)',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(JobPriority.HIGH)
   @Max(JobPriority.LOW)
