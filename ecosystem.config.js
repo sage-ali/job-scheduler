@@ -21,6 +21,7 @@ module.exports = {
       watch: false,
       env_production: {
         NODE_ENV: 'production',
+        SERVICE_NAME: 'job-scheduler-worker',
       },
     },
   ],

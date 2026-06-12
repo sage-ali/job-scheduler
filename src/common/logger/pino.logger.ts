@@ -27,7 +27,7 @@ const options: LoggerOptions = {
   level: logLevel,
 
   base: {
-    service: 'job-scheduler-api',
+    service: process.env.SERVICE_NAME ?? 'job-scheduler-api',
     env: process.env.NODE_ENV ?? 'development',
   },
 
