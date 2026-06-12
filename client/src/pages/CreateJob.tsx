@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createJob, type CreateJobDto, type JobType, type JobPriority, type RecurringInterval } from '../api/jobs';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createJob, fetchJobs, type CreateJobDto, type JobType, type JobPriority, type RecurringInterval } from '../api/jobs';
+import { StatusBadge } from '../components/StatusBadge';
 
 const defaultPayloads: Record<JobType, string> = {
   send_email: JSON.stringify({ to: 'user@example.com', subject: 'Hello', body: 'Message body' }, null, 2),
@@ -18,8 +19,13 @@ export function CreateJob() {
   const [payload, setPayload] = useState(defaultPayloads.send_email);
   const [scheduledAt, setScheduledAt] = useState('');
   const [interval, setInterval] = useState<RecurringInterval | ''>('');
-  const [dependsOn, setDependsOn] = useState('');
+  const [selectedDeps, setSelectedDeps] = useState<string[]>([]);
   const [payloadError, setPayloadError] = useState('');
+
+  const { data: existingJobs } = useQuery({
+    queryKey: ['jobs-picker'],
+    queryFn: () => fetchJobs({ page: 1, limit: 100 }),
+  });
 
   const mutation = useMutation({
     mutationFn: createJob,
@@ -54,9 +60,7 @@ export function CreateJob() {
       priority,
       ...(scheduledAt && { scheduled_at: new Date(scheduledAt).toISOString() }),
       ...(interval && { recurring_interval: interval }),
-      ...(dependsOn.trim() && {
-        depends_on: dependsOn.split(',').map((s) => s.trim()).filter(Boolean),
-      }),
+      ...(selectedDeps.length > 0 && { depends_on: selectedDeps }),
     };
 
     mutation.mutate(dto);
@@ -140,15 +144,36 @@ export function CreateJob() {
         {/* Depends On */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Depends On <span className="text-gray-400 font-normal">(optional — comma-separated job IDs)</span>
+            Depends On <span className="text-gray-400 font-normal">(optional)</span>
           </label>
-          <input
-            type="text"
-            value={dependsOn}
-            onChange={(e) => setDependsOn(e.target.value)}
-            placeholder="uuid-1, uuid-2"
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono"
-          />
+          {existingJobs && existingJobs.data.length > 0 ? (
+            <div className="max-h-44 overflow-y-auto rounded border border-gray-300 divide-y text-sm">
+              {existingJobs.data.map((job) => (
+                <label
+                  key={job.id}
+                  className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedDeps.includes(job.id)}
+                    onChange={() =>
+                      setSelectedDeps((prev) =>
+                        prev.includes(job.id) ? prev.filter((id) => id !== job.id) : [...prev, job.id],
+                      )
+                    }
+                  />
+                  <span className="font-mono text-xs text-gray-400">{job.id.slice(0, 8)}…</span>
+                  <span className="flex-1 truncate text-gray-700">{job.type}</span>
+                  <StatusBadge status={job.status} />
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 py-2">No existing jobs to depend on.</p>
+          )}
+          {selectedDeps.length > 0 && (
+            <p className="mt-1 text-xs text-indigo-600">{selectedDeps.length} job(s) selected</p>
+          )}
         </div>
 
         {mutation.isError && (
