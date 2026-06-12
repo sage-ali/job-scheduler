@@ -61,6 +61,7 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          connect_timeout: 60s
           script: mkdir -p "${{ vars.APP_PATH }}"
 
       - name: Clean app directory (preserve .env and node_modules)
@@ -69,6 +70,7 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          connect_timeout: 60s
           script: |
             find "${{ vars.APP_PATH }}" -mindepth 1 \
               -maxdepth 1 \
@@ -94,6 +96,7 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          connect_timeout: 60s
           script: |
             set -e
 
