@@ -67,7 +67,8 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          connect_timeout: 60s
+          timeout: 60s
+          command_timeout: 10m
           script: mkdir -p "${{ vars.APP_PATH }}"
 
       - name: Clean app directory (preserve .env and node_modules)
@@ -76,7 +77,8 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          connect_timeout: 60s
+          timeout: 60s
+          command_timeout: 10m
           script: |
             find "${{ vars.APP_PATH }}" -mindepth 1 \
               -maxdepth 1 \
@@ -102,7 +104,8 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          connect_timeout: 60s
+          timeout: 60s
+          command_timeout: 10m
           script: |
             set -e
 
@@ -123,15 +126,17 @@ jobs:
 
             if [ "${{ inputs.reset_db }}" = "true" ]; then
               echo "--- DB RESET requested ---"
+              # Drop only application tables + TypeORM's migrations tracker.
+              # Avoids DROP SCHEMA CASCADE which removes uuid-ossp (needs superuser to reinstall).
               docker exec job-scheduler-postgres-1 psql \
                 -U "${{ vars.DB_USER }}" \
                 -d "${{ vars.DB_NAME }}" \
-                -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+                -c "DROP TABLE IF EXISTS dlq_jobs, jobs, migrations CASCADE;"
               DOTENV_CONFIG_PATH=.env pnpm migration:run
               pnpm seed:db
               echo "--- DB RESET complete ---"
             else
-              pnpm migration:run
+              DOTENV_CONFIG_PATH=.env pnpm migration:run
             fi
             pnpm build
             pnpm --filter client build
