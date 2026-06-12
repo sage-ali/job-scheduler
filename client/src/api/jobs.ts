@@ -48,6 +48,11 @@ export interface CreateJobDto {
   depends_on?: string[];
 }
 
+export interface QueueStatus {
+  paused: boolean;
+  workers: number;
+}
+
 export interface ListJobsParams {
   status?: JobStatus;
   type?: JobType;
@@ -75,4 +80,17 @@ export async function createJob(dto: CreateJobDto): Promise<Job> {
 export async function cancelJob(id: string): Promise<Job> {
   const res = await client.patch<{ data: Job }>(`/jobs/${id}/cancel`);
   return res.data.data;
+}
+
+export async function fetchQueueStatus(): Promise<QueueStatus> {
+  const res = await client.get<{ data: QueueStatus }>('/jobs/queue/status');
+  return res.data.data;
+}
+
+export async function pauseQueue(): Promise<void> {
+  await client.post('/jobs/queue/pause');
+}
+
+export async function resumeQueue(): Promise<void> {
+  await client.post('/jobs/queue/resume');
 }
