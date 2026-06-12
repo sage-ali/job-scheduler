@@ -78,28 +78,50 @@ async function main() {
   });
   console.log(`Created recurring log_processing (every_1_minute) → ${recurring.data.id}`);
 
-  // 6. DAG chain: A → B → C
-  const jobA: any = await post('/jobs', {
+  // 6. DAG chain 1: Generate report → Upload file → Notify manager
+  const dagA: any = await post('/jobs', {
     type: 'log_processing',
-    payload: { source: 'report-gen', level: 'info', message: 'Generate report' },
+    payload: { source: 'report-gen', level: 'info', message: 'Generate monthly report' },
     priority: 1,
   });
-  const jobB: any = await post('/jobs', {
+  const dagB: any = await post('/jobs', {
     type: 'webhook_delivery',
     payload: { url: 'https://storage.example.com/upload', method: 'POST', body: { file: 'report.pdf' } },
     priority: 1,
-    depends_on: [jobA.data.id],
+    depends_on: [dagA.data.id],
   });
-  const jobC: any = await post('/jobs', {
+  const dagC: any = await post('/jobs', {
     type: 'send_email',
-    payload: { to: 'manager@example.com', subject: 'Report ready' },
+    payload: { to: 'manager@example.com', subject: 'Monthly report ready' },
     priority: 1,
-    depends_on: [jobB.data.id],
+    depends_on: [dagB.data.id],
   });
-  console.log(`\nDAG chain created:`);
-  console.log(`  A (generate report)  → ${jobA.data.id}`);
-  console.log(`  B (upload file)      → ${jobB.data.id}  [depends_on A]`);
-  console.log(`  C (send email)       → ${jobC.data.id}  [depends_on B]`);
+  console.log(`\nDAG chain 1 (linear):`);
+  console.log(`  ${dagA.data.id.slice(0, 8)}… generate report`);
+  console.log(`  ${dagB.data.id.slice(0, 8)}… upload file      [depends_on A]`);
+  console.log(`  ${dagC.data.id.slice(0, 8)}… notify manager   [depends_on B]`);
+
+  // 7. DAG chain 2: Fan-in — two parallel jobs must complete before the final step
+  const fanA: any = await post('/jobs', {
+    type: 'log_processing',
+    payload: { source: 'data-pipeline', level: 'info', message: 'Process transactions' },
+    priority: 2,
+  });
+  const fanB: any = await post('/jobs', {
+    type: 'log_processing',
+    payload: { source: 'data-pipeline', level: 'info', message: 'Validate schema' },
+    priority: 2,
+  });
+  const fanC: any = await post('/jobs', {
+    type: 'send_email',
+    payload: { to: 'data-team@example.com', subject: 'Pipeline complete' },
+    priority: 2,
+    depends_on: [fanA.data.id, fanB.data.id],
+  });
+  console.log(`\nDAG chain 2 (fan-in):`);
+  console.log(`  ${fanA.data.id.slice(0, 8)}… process transactions  (parallel)`);
+  console.log(`  ${fanB.data.id.slice(0, 8)}… validate schema       (parallel)`);
+  console.log(`  ${fanC.data.id.slice(0, 8)}… notify data-team      [depends_on A + B]`);
 
   console.log('\nAll jobs created. Watch the UI for live SSE updates.');
 }
