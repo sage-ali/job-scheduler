@@ -20,6 +20,9 @@ export class SchedulerService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async runSchedulerSweep(): Promise<void> {
+    // Recovery runs first so reset-to-PENDING jobs are immediately eligible for enqueuing.
+    const recovered = await this.recoverStalledJobs();
+
     const [enqueued, boosted] = await Promise.allSettled([
       this.enqueueReadyJobs(),
       this.boostStarvingJobs(),
@@ -27,6 +30,7 @@ export class SchedulerService {
 
     this.logger.log({
       event: 'scheduler_sweep_complete',
+      recovered,
       enqueued: enqueued.status === 'fulfilled' ? enqueued.value : 0,
       boosted: boosted.status === 'fulfilled' ? boosted.value : 0,
     });
@@ -112,6 +116,34 @@ export class SchedulerService {
       return starvingJobs.length;
     } catch (err) {
       this.logger.error({ event: 'starvation_boost_failed', error: (err as Error).message });
+      return 0;
+    }
+  }
+
+  private async recoverStalledJobs(): Promise<number> {
+    try {
+      const stalled = await this.jobModelAction.findStalledJobs(SWEEP_BATCH_SIZE);
+      if (stalled.length === 0) return 0;
+
+      await Promise.all(
+        stalled.map(async (job) => {
+          await this.jobModelAction.update({
+            identifierOptions: { id: job.id },
+            updatePayload: { status: JobStatus.PENDING, started_at: null, lease_expires_at: null },
+            transactionOptions: { useTransaction: false },
+          });
+          this.logger.warn({
+            event: 'job_stall_recovered',
+            jobId: job.id,
+            stalledSince: job.started_at,
+            leaseExpiredAt: job.lease_expires_at,
+          });
+        }),
+      );
+
+      return stalled.length;
+    } catch (err) {
+      this.logger.error({ event: 'stall_recovery_failed', error: (err as Error).message });
       return 0;
     }
   }
