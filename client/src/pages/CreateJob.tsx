@@ -16,6 +16,7 @@ export function CreateJob() {
 
   const [type, setType] = useState<JobType>('send_email');
   const [priority, setPriority] = useState<JobPriority>(2);
+  const [maxRetries, setMaxRetries] = useState<number>(3);
   const [payload, setPayload] = useState(defaultPayloads.send_email);
   const [scheduledAt, setScheduledAt] = useState('');
   const [interval, setInterval] = useState<RecurringInterval | ''>('');
@@ -61,6 +62,7 @@ export function CreateJob() {
       ...(scheduledAt && { scheduled_at: new Date(scheduledAt).toISOString() }),
       ...(interval && { recurring_interval: interval }),
       ...(selectedDeps.length > 0 && { depends_on: selectedDeps }),
+      max_retries: maxRetries,
     };
 
     mutation.mutate(dto);
@@ -85,18 +87,35 @@ export function CreateJob() {
           </select>
         </div>
 
-        {/* Priority */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value) as JobPriority)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value={1}>High (1)</option>
-            <option value={2}>Medium (2)</option>
-            <option value={3}>Low (3)</option>
-          </select>
+        {/* Priority + Max Retries side by side */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(Number(e.target.value) as JobPriority)}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value={1}>High (1)</option>
+              <option value={2}>Medium (2)</option>
+              <option value={3}>Low (3)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Max Retries
+              <span className="ml-1 text-gray-400 font-normal">(0 = no retries)</span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={3}
+              value={maxRetries}
+              onChange={(e) => setMaxRetries(Math.min(3, Math.max(0, Number(e.target.value))))}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
         </div>
 
         {/* Payload */}
@@ -146,9 +165,9 @@ export function CreateJob() {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Depends On <span className="text-gray-400 font-normal">(optional)</span>
           </label>
-          {existingJobs && existingJobs.data.length > 0 ? (
+          {existingJobs && existingJobs.data.filter((j) => j.status === 'pending' || j.status === 'processing').length > 0 ? (
             <div className="max-h-44 overflow-y-auto rounded border border-gray-300 divide-y text-sm">
-              {existingJobs.data.map((job) => (
+              {existingJobs.data.filter((j) => j.status === 'pending' || j.status === 'processing').map((job) => (
                 <label
                   key={job.id}
                   className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer"
