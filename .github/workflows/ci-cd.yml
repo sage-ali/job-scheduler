@@ -29,7 +29,7 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm@11.1.1
 
-      - name: Install API dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Lint
@@ -41,13 +41,8 @@ jobs:
       - name: Build API
         run: pnpm build
 
-      - name: Install frontend dependencies
-        working-directory: client
-        run: pnpm install --frozen-lockfile
-
       - name: Build frontend
-        working-directory: client
-        run: pnpm build
+        run: pnpm --filter client build
 
   deploy:
     name: Deploy
@@ -125,18 +120,11 @@ jobs:
             corepack prepare pnpm@11.1.1 --activate
             pnpm --version
 
-            # Install and build API
-            # onlyBuiltDependencies in package.json controls which build scripts run —
-            # no interactive approval needed
+            # Single install covers both API and client (pnpm workspace)
             pnpm install --frozen-lockfile --prod=false
             pnpm migration:run
             pnpm build
-
-            # Install and build frontend
-            cd client
-            pnpm install --frozen-lockfile
-            pnpm build
-            cd ..
+            pnpm --filter client build
 
             # Restart or start PM2 process
             if pm2 describe "${{ vars.APP_NAME }}" > /dev/null 2>&1; then
