@@ -9,6 +9,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { DlqModule } from './modules/dlq/dlq.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
+import { BenchmarkModule } from './modules/benchmark/benchmark.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
     JobsModule,
     DlqModule,
     SchedulerModule,
+    BenchmarkModule,
   ],
 })
 export class AppModule {}

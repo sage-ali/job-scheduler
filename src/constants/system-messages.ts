@@ -29,6 +29,9 @@ export const JOB_CANNOT_BE_CANCELLED = (status: string) =>
 export const JOB_DEPENDENCY_NOT_MET = (depId: string) =>
   `Dependency job ${depId} has not completed successfully`;
 
+// Benchmark
+export const BENCHMARK_COMPLETE = 'Benchmark complete';
+
 // DLQ
 export const DLQ_JOB_NOT_FOUND = (id: string) => `DLQ job ${id} not found`;
 export const DLQ_LIST_FETCHED = 'DLQ jobs retrieved successfully';
