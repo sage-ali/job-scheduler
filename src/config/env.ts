@@ -34,6 +34,10 @@ const envSchema = z.object({
     .default(3)
     .transform((v) => Math.max(1, v)),
 
+  // How long a worker holds a job lease before it is considered stalled.
+  // Must be >= the longest expected handler duration. Default: 120s.
+  LEASE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+
   // Jobs sent to the DLQ trigger an email alert once this count is reached.
   DLQ_ALERT_THRESHOLD: z.coerce.number().int().positive().default(10),
   ALERT_EMAIL: z.string().email().default('admin@example.com'),
