@@ -1,5 +1,6 @@
 import { applyDecorators, HttpStatus } from '@nestjs/common';
 import {
+  ApiBody,
   ApiExtraModels,
   ApiOkResponse,
   ApiOperation,
@@ -8,7 +9,12 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import * as SYS_MSG from '@constants/system-messages';
-import { AlgoMetricsDto, BenchmarkResultDto } from './benchmark-response.dto';
+import {
+  AlgoMetricsDto,
+  BenchmarkResultDto,
+  LatencyStatsDto,
+  ThroughputResultDto,
+} from './benchmark-response.dto';
 
 const errorSchema = (statusCode: HttpStatus, error: string, message: string) => ({
   example: {
@@ -72,6 +78,47 @@ export function RunBenchmarkDocs() {
         SYS_MSG.HTTP_INTERNAL_SERVER_ERROR_NAME,
         SYS_MSG.HTTP_INTERNAL_SERVER_ERROR,
       ),
+    }),
+  );
+}
+
+export function RunThroughputDocs() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'End-to-end job throughput benchmark',
+      description:
+        'Creates N real jobs (max_retries=0), waits for every job to reach a terminal state, ' +
+        'then returns queue-wait and processing latency percentiles.\n\n' +
+        '**Queue wait** (`created_at → started_at`): time a job sits in Bull/Redis before a ' +
+        'worker claims it. Grows linearly with backlog depth.\n\n' +
+        '**Processing** (`started_at → completed_at`): time spent inside the worker handler. ' +
+        'Stable under load — reflects handler latency, not queue depth.\n\n' +
+        '`n` is clamped to [10, 200] to keep the request within a reasonable wall-clock budget.',
+    }),
+    ApiBody({
+      schema: {
+        properties: {
+          n: { type: 'number', example: 100, description: 'Number of jobs (10–200)' },
+          type: {
+            type: 'string',
+            enum: ['send_email', 'webhook_delivery', 'log_processing'],
+            example: 'send_email',
+          },
+        },
+        required: ['n'],
+      },
+    }),
+    ApiExtraModels(ThroughputResultDto, LatencyStatsDto),
+    ApiOkResponse({
+      description: SYS_MSG.THROUGHPUT_BENCHMARK_COMPLETE,
+      schema: {
+        properties: {
+          success: { type: 'boolean', example: true },
+          statusCode: { type: 'number', example: HttpStatus.OK },
+          message: { type: 'string', example: SYS_MSG.THROUGHPUT_BENCHMARK_COMPLETE },
+          data: { $ref: getSchemaPath(ThroughputResultDto) },
+        },
+      },
     }),
   );
 }
