@@ -19,7 +19,7 @@ A full-stack background job scheduler built with NestJS, Bull + Redis, PostgreSQ
 
 ## Quick Start (local dev)
 
-**Prerequisites:** Node 20+, Docker
+**Prerequisites:** Node 22+, Docker
 
 ```bash
 # 1. Start Postgres + Redis
