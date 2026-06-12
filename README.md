@@ -5,15 +5,18 @@ A full-stack background job scheduler built with NestJS, Bull + Redis, PostgreSQ
 ## Features
 
 - **Priority queue** — jobs ordered by priority, scheduled time, and creation time via a min-heap
-- **DAG workflows** — jobs can depend on other jobs; a job won't run until all dependencies complete
+- **DAG workflows** — jobs can depend on other jobs; dependency on a failed/cancelled job cascade-fails the dependent immediately
 - **Recurring jobs** — completed recurring jobs automatically schedule the next run
 - **Scheduled jobs** — jobs with a future `scheduled_at` wait until their time
-- **Retries with backoff** — failed jobs retry up to 3 times with exponential backoff + jitter
+- **Configurable retries** — `max_retries` per job (0–3); failed jobs retry with exponential backoff + jitter
 - **Dead-letter queue** — exhausted jobs land in the DLQ for inspection and manual retry
 - **Starvation prevention** — low-priority jobs gain effective priority the longer they wait
-- **Duplicate protection** — Redis SETNX lock prevents two workers processing the same job
-- **SSE live updates** — UI reflects status changes without a page refresh
-- **Three job handlers** — `send_email`, `webhook_delivery`, `log_processing` (all simulated)
+- **Stall recovery** — worker jobs holding a lease past `LEASE_TTL_SECONDS` are reset to `pending`
+- **Duplicate protection** — atomic DB claim (`UPDATE … WHERE status = 'pending'`) prevents two workers taking the same job
+- **Queue pause / resume** — halt job dispatch without stopping workers; in-flight jobs finish
+- **SSE live updates** — worker events bridge to the API via Redis pub/sub; UI reflects changes without polling
+- **Throughput benchmark** — built-in endpoint creates real jobs, waits for completion, and reports latency percentiles
+- **Three job handlers** — `send_email`, `webhook_delivery`, `log_processing` (all simulated with realistic latency and failure rates)
 
 ---
 
@@ -25,30 +28,39 @@ A full-stack background job scheduler built with NestJS, Bull + Redis, PostgreSQ
 # 1. Start Postgres + Redis
 docker compose up -d
 
-# 2. Install dependencies
+# 2. Install dependencies (root + client)
 pnpm install
+cd client && pnpm install && cd ..
 
-# 3. Create a .env file (see Environment Variables below)
+# 3. Copy env file
 cp .env.example .env
 
 # 4. Run DB migrations
-pnpm run migration:run
+pnpm migration:run
 
-# 5. Start the API (http://localhost:3000)
-pnpm run start:dev
+# 5. Start API + worker together (recommended)
+pnpm dev
+```
 
-# 6. In a second terminal, start the frontend (http://localhost:5173)
-cd client && pnpm install && pnpm dev
+`pnpm dev` starts the API on `http://localhost:3000` and one worker process in the same terminal with colour-coded, labelled output (`[api]` / `[worker]`).
+
+**Frontend** (separate terminal):
+
+```bash
+cd client && pnpm dev   # http://localhost:5173
+```
+
+**Multiple workers for load testing:**
+
+```bash
+pnpm dev:4workers   # API + 4 worker processes
 ```
 
 **Seed data:**
 
 ```bash
-# Populate the DB with demo jobs and DLQ entries (no server needed)
-pnpm run seed:db
-
-# Or fire live jobs through the API (server must be running — watch SSE in UI)
-pnpm run seed:live
+pnpm seed:db    # Populate DB with demo jobs (server not required)
+pnpm seed:live  # Fire live jobs through the API (server must be running)
 ```
 
 **API docs:** `http://localhost:3000/api/docs` (Swagger)
@@ -71,41 +83,57 @@ pnpm run seed:live
 | `REDIS_PASSWORD` | — | Redis password (optional) |
 | `REDIS_TLS` | `false` | Enable TLS for Redis |
 | `LOG_LEVEL` | `info` | Pino log level |
-| `QUEUE_CONCURRENCY` | `3` | Bull worker concurrency |
+| `QUEUE_CONCURRENCY` | `3` | Concurrent job slots per worker process |
+| `LEASE_TTL_SECONDS` | `120` | Seconds a worker holds a job before it is considered stalled |
 | `DLQ_ALERT_THRESHOLD` | `10` | DLQ entry count that triggers an alert email |
 | `ALERT_EMAIL` | `admin@example.com` | Recipient for DLQ threshold alerts |
 | `SWAGGER_ENABLED` | `true` | Enable Swagger UI at `/api/docs` |
+
+**Production only (PM2 / ecosystem.config.js):**
+
+| Variable           | Default | Description                             |
+|--------------------|---------|-----------------------------------------|
+| `WORKER_INSTANCES` | `1`     | Number of worker PM2 instances to start |
 
 ---
 
 ## Architecture
 
+The API and worker run as **separate processes**. The worker has no HTTP server — it only connects to Postgres and Redis. Worker lifecycle events are bridged back to the API via a Redis pub/sub channel so the SSE stream stays live.
+
 ```
 Browser (React + Vite + Tailwind)
-  ├── Dashboard    — job counts by status
-  ├── Jobs table   — filter, paginate, cancel
-  ├── Create Job   — all fields including DAG depends_on
-  └── DLQ view     — error details + manual retry button
+  ├── Dashboard    — live job counts, queue status, worker count
+  ├── Jobs         — filter, paginate, cancel
+  ├── Create Job   — all fields including DAG depends_on and max_retries
+  ├── DLQ          — paginated error list + manual retry
+  └── Benchmark    — algorithm comparison + live throughput test
         │
         │  HTTP REST + SSE (EventSource)
         ▼
-NestJS API (port 3000)
-  ├── JobsController    — CRUD + SSE endpoint
-  ├── DlqController     — list + retry
-  ├── SchedulerService  — cron sweep every 60s
-  │     ├── HeapPriorityQueue  — orders batch by score/scheduledAt/createdAt
-  │     └── boostStarvingJobs  — raises priority_score for long-waiting jobs
-  ├── JobWorkerProcessor (Bull)
-  │     ├── Redis SETNX lock   — duplicate protection
-  │     ├── DAG check          — skip if dependencies unmet
-  │     ├── dispatch()         — routes to correct handler
-  │     └── onFailed()         — retry or DLQ
-  └── SseService  — EventEmitter2 bus → Observable<MessageEvent>
-        │
-   ┌────┴────┐
-Postgres    Redis
-(jobs,      (Bull queue,
- dlq_jobs)   job locks)
+NestJS API  (dist/main.js, port 3000)
+  ├── JobsController       — CRUD + pause/resume + SSE endpoint
+  ├── DlqController        — list (paginated) + retry
+  ├── BenchmarkController  — algorithm bench + throughput test
+  ├── SchedulerService     — cron sweep every 60s
+  │     ├── recoverStalledJobs   — reset jobs whose lease expired
+  │     ├── HeapPriorityQueue    — orders batch by score/scheduledAt/createdAt
+  │     ├── enqueueReadyJobs     — DAG check + Bull enqueue
+  │     └── boostStarvingJobs    — raises priority_score for long-waiting jobs
+  └── SseService  — Redis SUB → EventEmitter2 → Observable<MessageEvent>
+        │                              ▲
+        │                              │ Redis PUB (worker events)
+        ▼                              │
+     Postgres ◄──────────────── NestJS Worker  (dist/worker.js)
+     (jobs,                       └── JobWorkerProcessor (Bull)
+      dlq_jobs)                         ├── atomic DB claim (UPDATE … WHERE pending)
+                                        ├── DAG check + cascade-fail
+                                        ├── dispatch() → handler
+                                        └── onFailed() → retry or DLQ
+                                               │
+                                             Redis
+                                        (Bull queue, job locks,
+                                         SSE pub/sub channel)
 ```
 
 ---
@@ -153,45 +181,69 @@ tick():
 
 **Complexity:** `insert` O(1), `tick` O(k) where k = jobs in the current slot
 
-**Strength:** Constant-time insert regardless of queue depth — wins at high N
+**Strength:** Constant-time insert regardless of queue depth — wins at high N  
 **Weakness:** Fixed 1s granularity, priority is not first-class, jobs > 1h need overflow handling
 
 ---
 
-## Benchmark Results
+## Algorithm Benchmark
+
+Compare the heap and timing wheel live via the Benchmark page in the UI, or hit the API directly:
 
 ```
-        N   heap:insert   heap:pop   wheel:insert   wheel:drain   insert winner   drain winner
-─────────────────────────────────────────────────────────────────────────────────────────────
-    1,000        1.00ms     3.57ms         0.43ms        1.00ms           wheel          wheel
-   10,000        1.56ms     3.90ms         1.03ms        0.14ms           wheel          wheel
-  100,000        6.99ms    32.94ms         8.80ms        0.07ms            heap          wheel
+GET /api/v1/benchmark?n=10000
 ```
 
-Wheel wins on insert at N=1k and N=10k (O(1) vs O(log n)). At N=100k the heap's insert
-is faster in practice because the wheel's slot arrays grow large enough to pressure the
-cache, while the heap's contiguous array stays warm. Wheel drain dominates at all sizes
-because it scans 3600 slots once — O(k) total — vs the heap's O(n log n) full drain.
+Sample results:
 
-Run the benchmark yourself:
+```
+        N   heap:insert   heap:drain   wheel:insert   wheel:drain   insert winner   drain winner
+─────────────────────────────────────────────────────────────────────────────────────────────────
+    1,000        1.00ms      3.57ms         0.43ms        1.00ms           wheel          wheel
+   10,000        1.56ms      3.90ms         1.03ms        0.14ms           wheel          wheel
+  100,000        6.99ms     32.94ms         8.80ms        0.07ms            heap          wheel
+```
+
+Wheel wins insert at N=1k and N=10k (O(1) vs O(log n)). At N=100k the heap is faster in practice because the wheel's slot arrays grow large enough to pressure the cache. Wheel drain dominates at all sizes — O(k) total vs the heap's O(n log n).
+
+---
+
+## Throughput Benchmark
+
+The `POST /api/v1/benchmark/throughput` endpoint creates N real jobs (with `max_retries=0`), waits for every job to reach a terminal state, and returns latency percentiles. Available through the Benchmark page in the UI.
+
+```
+POST /api/v1/benchmark/throughput
+{ "n": 100, "type": "send_email" }
+```
+
+Response includes:
+
+| Field | Description |
+|---|---|
+| `queueWait` | Time from job creation to worker pickup (scheduler + Bull overhead) |
+| `processing` | Time from worker pickup to completion (handler + DB write) |
+| Both have | `min`, `p50`, `p95`, `p99`, `max`, `avg` |
+
+CLI equivalent:
 
 ```bash
-npx ts-node -r tsconfig-paths/register benchmark/scheduler.bench.ts
+pnpm perf          # 50 send_email jobs (default)
+pnpm perf 100      # 100 jobs
+pnpm perf 200 --type=webhook_delivery
 ```
 
 ---
 
 ## Starvation Prevention
 
-Low-priority jobs cannot wait forever. The scheduler sweep applies a score boost to any
-`pending` job that has been waiting longer than the starvation threshold.
+Low-priority jobs cannot wait forever. The scheduler sweep applies a score boost to any `pending` job that has been waiting longer than the starvation threshold.
 
 ```
-STARVATION_THRESHOLD  = 5 minutes
+STARVATION_THRESHOLD   = 5 minutes
 SCORE_BOOST_PER_MINUTE = 0.1
 
-extra_wait_min = max(0, (now − created_at − THRESHOLD) / 60 000)
-new_score      = max(0, priority_score − extra_wait_min × 0.1)
+new_score = max(0, priority_score − (wait_beyond_threshold_min × 0.1))
 ```
 
 **Example:** A LOW priority job (initial score = 30) waiting 200 minutes beyond the threshold:
@@ -205,20 +257,27 @@ Score never goes below 0. A LOW job reaches HIGH effective priority after ~200 m
 
 ---
 
+## Stall Recovery
+
+If a worker crashes mid-job, its lease expires after `LEASE_TTL_SECONDS` (default 120s). The next scheduler sweep detects jobs where `status = processing AND lease_expires_at < now` and resets them to `pending`. They re-enter the queue on the following sweep.
+
+---
+
+## DAG Cascade Failure
+
+If a `depends_on` dependency reaches a terminal state (`FAILED` or `CANCELLED`), any job waiting on it is immediately marked `FAILED` on the next scheduler sweep. It never gets stuck in `pending` indefinitely. The event is logged as `scheduler_dag_cascade_fail`.
+
+---
+
 ## DLQ Alert Threshold
 
-Configured via `DLQ_ALERT_THRESHOLD` env var (default: **10 entries**).
+Configured via `DLQ_ALERT_THRESHOLD` (default: **10 entries**).
 
-When `dlq_jobs` count reaches the threshold, `DlqService.checkThresholdAndAlert()` fires
-a simulated email alert to `ALERT_EMAIL` via `EmailSimulationHandler`. The handler uses
-the same 15% failure / 100–600ms latency simulation as regular `send_email` jobs —
-consistent with the project's mock-external-services approach.
-
-Engineers can then:
+When `dlq_jobs` count reaches the threshold, `DlqService.checkThresholdAndAlert()` fires a simulated email alert to `ALERT_EMAIL`. Engineers can then:
 
 - View each DLQ entry (type, payload, error message, retry count, last attempted)
 - Trigger a manual retry — re-creates the job as a fresh `pending` entry
-- A retried job that fails again after 3 attempts returns to the DLQ
+- A retried job that fails again after exhausting retries returns to the DLQ
 
 ---
 
@@ -227,7 +286,7 @@ Engineers can then:
 | Status at cancel time | Outcome |
 |---|---|
 | `pending` | Cancelled in DB; Bull job removed by ID |
-| `processing` | `CANCELLED` written to DB immediately. The worker checks status before writing `COMPLETED` and discards the result. The handler may finish internally, but the DB record stays `CANCELLED`. This is **best-effort cancellation during processing** — documented by design. |
+| `processing` | `CANCELLED` written to DB immediately. The worker checks status before writing `COMPLETED` and discards the result. The handler may finish internally, but the DB record stays `CANCELLED`. Best-effort cancellation — by design. |
 | `completed` / `failed` / `cancelled` | 400 Bad Request |
 
 ---
@@ -235,25 +294,18 @@ Engineers can then:
 ## Running Tests
 
 ```bash
-# All tests
-pnpm test
-
-# Watch mode
-pnpm run test:watch
-
-# With coverage
-pnpm run test:cov
+pnpm test            # all tests
+pnpm test:watch      # watch mode
+pnpm test:cov        # with coverage
 ```
 
-**86 tests across 10 suites** covering: JobsService, DlqService, SchedulerService,
-JobWorkerProcessor, BackoffService, SseService, EmailSimulationHandler,
-WebhookDeliveryHandler, LogProcessingHandler, HeapPriorityQueue, TimingWheel.
+Tests cover: JobsService, DlqService, SchedulerService, JobWorkerProcessor, BackoffService, SseService, EmailSimulationHandler, WebhookDeliveryHandler, LogProcessingHandler, HeapPriorityQueue, TimingWheel.
 
 ---
 
 ## API Reference
 
-Full interactive docs at `<URL>/api/docs` (Swagger UI).
+Full interactive docs at `http://localhost:3000/api/docs` (Swagger).
 
 | Method | Path | Description |
 |---|---|---|
@@ -263,5 +315,33 @@ Full interactive docs at `<URL>/api/docs` (Swagger UI).
 | `GET` | `/api/v1/jobs/:id` | Get a single job |
 | `PATCH` | `/api/v1/jobs/:id/cancel` | Cancel a job |
 | `GET` | `/api/v1/jobs/events` | SSE stream of job lifecycle events |
-| `GET` | `/api/v1/dlq` | List DLQ entries |
+| `GET` | `/api/v1/queue/status` | Queue status (active, waiting, paused, worker count) |
+| `POST` | `/api/v1/queue/pause` | Pause job dispatch |
+| `POST` | `/api/v1/queue/resume` | Resume job dispatch |
+| `GET` | `/api/v1/dlq` | List DLQ entries (paginated) |
 | `POST` | `/api/v1/dlq/:id/retry` | Retry a DLQ entry |
+| `GET` | `/api/v1/benchmark` | Algorithm benchmark (heap vs timing wheel) |
+| `POST` | `/api/v1/benchmark/throughput` | Live throughput test with latency percentiles |
+
+---
+
+## Production Deployment
+
+The app ships two PM2 processes via `ecosystem.config.js`:
+
+| Process | Script | Role |
+|---|---|---|
+| `api` | `dist/main.js` | HTTP server, scheduler, SSE |
+| `worker` | `dist/worker.js` | Bull processor, no HTTP |
+
+```bash
+# First deploy
+pm2 start ecosystem.config.js --env production
+pm2 save
+
+# Subsequent deploys (zero-downtime reload)
+pm2 reload ecosystem.config.js --env production --update-env
+
+# Scale workers (set in server .env before reloading)
+WORKER_INSTANCES=2
+```
