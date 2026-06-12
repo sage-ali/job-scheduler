@@ -128,8 +128,8 @@ async function main() {
 
   const dagJobs = [
     { id: dagAId, type: 'send_email', payload: { to: 'dag-step-a@example.com', subject: 'DAG Step A (no deps)' }, priority: 1, priority_score: 1, status: 'pending', depends_on: null },
-    { id: dagBId, type: 'send_email', payload: { to: 'dag-step-b@example.com', subject: 'DAG Step B (waits for A)' }, priority: 1, priority_score: 1, status: 'pending', depends_on: JSON.stringify([dagAId]) },
-    { id: dagCId, type: 'webhook_delivery', payload: { url: 'https://hooks.example.com/dag', method: 'POST', body: { step: 'C', after: dagAId } }, priority: 2, priority_score: 2, status: 'pending', depends_on: JSON.stringify([dagAId]) },
+    { id: dagBId, type: 'send_email', payload: { to: 'dag-step-b@example.com', subject: 'DAG Step B (waits for A)' }, priority: 1, priority_score: 1, status: 'pending', depends_on: [dagAId] },
+    { id: dagCId, type: 'webhook_delivery', payload: { url: 'https://hooks.example.com/dag', method: 'POST', body: { step: 'C', after: dagAId } }, priority: 2, priority_score: 2, status: 'pending', depends_on: [dagAId] },
   ].map((j) => ({ ...base, ...j }));
 
   // ── Historical data for stats cards ───────────────────────────────────────

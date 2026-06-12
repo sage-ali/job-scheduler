@@ -60,21 +60,29 @@ export class SchedulerService {
         const node = heap.popMin()!;
         const job = jobMap.get(node.jobId)!;
 
-        if (job.depends_on && job.depends_on.length > 0) {
-          const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
-          const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
-          if (unmet.length > 0) {
-            this.logger.log({
-              event: 'scheduler_skip_dag_unmet',
-              jobId: job.id,
-              unmetCount: unmet.length,
-            });
-            continue;
+        try {
+          if (job.depends_on && job.depends_on.length > 0) {
+            const deps = await this.jobModelAction.findJobsByIds(job.depends_on);
+            const unmet = deps.filter((d) => d.status !== JobStatus.COMPLETED);
+            if (unmet.length > 0) {
+              this.logger.log({
+                event: 'scheduler_skip_dag_unmet',
+                jobId: job.id,
+                unmetCount: unmet.length,
+              });
+              continue;
+            }
           }
-        }
 
-        await this.jobsService.enqueue(job);
-        enqueued++;
+          await this.jobsService.enqueue(job);
+          enqueued++;
+        } catch (err) {
+          this.logger.error({
+            event: 'scheduler_enqueue_job_failed',
+            jobId: job.id,
+            error: (err as Error).message,
+          });
+        }
       }
 
       return enqueued;
