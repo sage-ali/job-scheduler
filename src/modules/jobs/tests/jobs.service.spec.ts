@@ -42,6 +42,7 @@ describe('JobsService', () => {
       get: jest.fn(),
       update: jest.fn(),
       countByStatus: jest.fn(),
+      findJobsByIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<JobModelAction>;
 
     jobsQueue = {

@@ -1,7 +1,6 @@
 import { JobWorkerProcessor } from '../job-worker.processor';
 import { JobModelAction } from '@modules/jobs/jobs.model-action';
 import { DlqService } from '@modules/dlq/dlq.service';
-import { RedisService } from '@modules/redis/redis.service';
 import { EmailSimulationHandler } from '@queue/handlers/email-simulation.handler';
 import { WebhookDeliveryHandler } from '@queue/handlers/webhook-delivery.handler';
 import { LogProcessingHandler } from '@queue/handlers/log-processing.handler';
@@ -55,7 +54,6 @@ describe('JobWorkerProcessor', () => {
   let processor: JobWorkerProcessor;
   let jobModelAction: jest.Mocked<JobModelAction>;
   let dlqService: jest.Mocked<DlqService>;
-  let redisService: jest.Mocked<RedisService>;
   let emailHandler: jest.Mocked<EmailSimulationHandler>;
   let webhookHandler: jest.Mocked<WebhookDeliveryHandler>;
   let logHandler: jest.Mocked<LogProcessingHandler>;
@@ -66,17 +64,13 @@ describe('JobWorkerProcessor', () => {
       get: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
       create: jest.fn().mockResolvedValue({}),
+      claimJob: jest.fn().mockResolvedValue(true),
       findJobsByIds: jest.fn(),
     } as unknown as jest.Mocked<JobModelAction>;
 
     dlqService = {
       moveToDlq: jest.fn().mockResolvedValue({}),
     } as unknown as jest.Mocked<DlqService>;
-
-    redisService = {
-      setNx: jest.fn().mockResolvedValue(true),
-      releaseLock: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<RedisService>;
 
     emailHandler = {
       handle: jest.fn().mockResolvedValue(undefined),
@@ -100,7 +94,6 @@ describe('JobWorkerProcessor', () => {
     processor = new JobWorkerProcessor(
       jobModelAction,
       dlqService,
-      redisService,
       emailHandler,
       webhookHandler,
       logHandler,
@@ -110,32 +103,28 @@ describe('JobWorkerProcessor', () => {
   });
 
   describe('handleJob', () => {
-    it('acquires lock, processes, marks COMPLETED, and releases lock', async () => {
+    it('claims job atomically, processes, and marks COMPLETED', async () => {
       const job = makeJob();
       jobModelAction.get.mockResolvedValue(job);
 
       await processor.handleJob(makeBullJob('job-uuid'));
 
-      expect(redisService.setNx).toHaveBeenCalledTimes(1);
-      expect(jobModelAction.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          updatePayload: expect.objectContaining({ status: JobStatus.PROCESSING }),
-        }),
-      );
+      expect(jobModelAction.claimJob).toHaveBeenCalledTimes(1);
       expect(jobModelAction.update).toHaveBeenCalledWith(
         expect.objectContaining({
           updatePayload: expect.objectContaining({ status: JobStatus.COMPLETED }),
         }),
       );
-      expect(redisService.releaseLock).toHaveBeenCalledTimes(1);
     });
 
-    it('returns early without processing if lock is not acquired', async () => {
-      redisService.setNx.mockResolvedValue(false);
+    it('returns early without processing when atomic claim fails', async () => {
+      jobModelAction.get.mockResolvedValue(makeJob());
+      jobModelAction.claimJob.mockResolvedValue(false);
 
       await processor.handleJob(makeBullJob('job-uuid'));
 
-      expect(jobModelAction.get).not.toHaveBeenCalled();
+      expect(emailHandler.handle).not.toHaveBeenCalled();
+      expect(jobModelAction.update).not.toHaveBeenCalled();
     });
 
     it('returns early if job is not found in DB', async () => {
@@ -217,13 +206,13 @@ describe('JobWorkerProcessor', () => {
       );
     });
 
-    it('releases the lock even if processing throws', async () => {
+    it('propagates dispatch errors so Bull can handle retries', async () => {
       const job = makeJob({ type: 'unknown_type' as never });
       jobModelAction.get.mockResolvedValue(job);
 
-      await expect(processor.handleJob(makeBullJob('job-uuid'))).rejects.toThrow();
-
-      expect(redisService.releaseLock).toHaveBeenCalledTimes(1);
+      await expect(processor.handleJob(makeBullJob('job-uuid'))).rejects.toThrow(
+        'Unknown job type: unknown_type',
+      );
     });
   });
 

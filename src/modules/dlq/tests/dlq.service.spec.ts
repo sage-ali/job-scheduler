@@ -36,6 +36,7 @@ describe('DlqService', () => {
       save: jest.fn(),
       find: jest.fn(),
       findOne: jest.fn(),
+      findAndCount: jest.fn(),
       count: jest.fn(),
       delete: jest.fn(),
     } as unknown as jest.Mocked<Repository<DlqJob>>;
@@ -117,14 +118,20 @@ describe('DlqService', () => {
   });
 
   describe('listDlqJobs', () => {
-    it('returns all DLQ entries ordered by created_at DESC', async () => {
+    it('returns paginated DLQ entries ordered by created_at DESC', async () => {
       const jobs = [makeDlqJob(), makeDlqJob({ id: 'dlq-2' })];
-      repo.find.mockResolvedValue(jobs);
+      repo.findAndCount.mockResolvedValue([jobs, 2]);
 
-      const result = await service.listDlqJobs();
+      const result = await service.listDlqJobs(1, 20);
 
-      expect(repo.find).toHaveBeenCalledWith({ order: { created_at: 'DESC' } });
-      expect(result).toBe(jobs);
+      expect(repo.findAndCount).toHaveBeenCalledWith({
+        order: { created_at: 'DESC' },
+        skip: 0,
+        take: 20,
+      });
+      expect(result.data).toBe(jobs);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
     });
   });
 
